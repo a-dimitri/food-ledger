@@ -1,0 +1,12 @@
+# Runtime deps for the UI Cloud Run service (see ui/Dockerfile).
+# tzdata is required: slim base images omit the system zoneinfo database that
+# core.timeutils needs for Australia/Sydney.
+fastapi==0.139.0
+uvicorn[standard]==0.50.0
+google-cloud-firestore==2.28.0
+tzdata
+# MCP service (mcp_server.app): OAuth AS + tools. google-auth (id_token verify)
+# comes transitively with google-cloud-firestore.
+mcp==1.28.1
+httpx==0.28.1
+

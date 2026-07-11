@@ -1,0 +1,24 @@
+# Keep the build context small; the Dockerfile only COPYs core/ and ui/.
+.venv/
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Not part of the service
+tests/
+migrate/
+build_tracker.py
+food-tracker.html
+food_data.json
+*.dc.html
+*.md
+.claude/
+.DS_Store
+
+# Deploy tooling + local secrets — keep out of the build context
+deploy.sh
+deploy.env
+deploy.env.example

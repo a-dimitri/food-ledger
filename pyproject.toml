@@ -1,0 +1,24 @@
+[project]
+name = "diet-tracker"
+version = "0.1.0"
+description = "Personal diet tracker: GCP-hosted web app + authenticated MCP server"
+requires-python = ">=3.12"
+# core has no third-party runtime deps — pure stdlib compute.
+dependencies = []
+
+[project.optional-dependencies]
+# Installed as each stage is built. Grouped so the intended stack is documented
+# even before the code exists. Pins get added when the group is first used.
+dev = ["pytest", "httpx"]  # httpx: FastAPI TestClient for API smoke tests
+ui = [
+  "fastapi",
+  "uvicorn[standard]",
+  "google-cloud-firestore",
+]
+mcp = [
+  "mcp",
+  "google-cloud-firestore",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
