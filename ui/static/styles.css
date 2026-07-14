@@ -2,7 +2,12 @@
    Tokens and finish come from the hi-fi desktop wireframe (Ledger Desktop.dc.html);
    the mobile structure (bottom tabs, bottom sheets) comes from Ledger.dc.html.
    The wireframes draw a browser window around the app; the real app *is* the
-   window, so .win's surface (#f6f2e9) becomes the page background. */
+   window, so .win's surface (#f6f2e9) becomes the page background.
+
+   Every colour resolves through a token below — including the ones the SVG charts
+   in app.js paint with, which emit var(--n-calories) and friends rather than hex
+   literals so a theme swap repaints them without a re-render. The dark palette is
+   the [data-theme="dark"] block underneath; add a token to one, add it to both. */
 
 :root {
   /* surfaces */
@@ -13,6 +18,7 @@
   --chip: #efe8d9;
   --track: #ece4d3;        /* progress-bar track */
   --hover: #f8f3e8;
+  --tabbar: #ece5d6;
 
   /* ink */
   --ink: #1e1b16;
@@ -21,12 +27,17 @@
   --label: #9a917f;
   --sub: #8a8173;
   --placeholder: #aaa08c;
+  --ink-soft: #7a715f;     /* nav items + chips at rest */
+  --ink-soft-hover: #4a4335;
+  --tab-ink: #a29a8b;      /* inactive bottom-tab label */
 
   /* lines */
   --line: #eadfca;         /* card borders */
   --line-strong: #d8cdb6;  /* field + pill borders */
   --divider: #f1ead9;      /* between rows */
   --sidebar-line: #dbd1bc;
+  --warm-line: #f0dcc9;    /* border of the gradient (.warm) cards */
+  --nav-line: #ecdfc8;     /* border of the active sidebar item */
 
   /* accents */
   --terracotta: #c05f3e;
@@ -35,9 +46,23 @@
   --amber: #cf9646;
   --sage: #9bab6f;
   --tan: #a68a64;
+  --over: #b34e2d;         /* a value that has blown past its target */
 
-  /* nutrient series — mirrored by NUTRIENT_COLORS in app.js */
+  /* component fills that aren't a plain surface */
+  --nav-hover: rgba(255, 253, 248, .6);
+  --nav-section: #b0a794;
+  --chip-hover: #e7dfcc;
+  --chip-on: #1e1b16;      /* selected chip / scale button */
+  --chip-on-ink: #f6f2e9;
+  --tag: #efe4d0;          /* the "CLAUDE" provenance tag */
+  --tag-ink: #a07a3c;
+  --x-hover: #e4dbc8;
+  --grab: #cabfa8;         /* bottom-sheet grab bar */
+  --scrim: rgba(30, 27, 22, .4);
+
+  /* nutrient series — painted straight into the SVGs by app.js */
   --n-calories: #c05f3e;
+  --n-calories-faded: #e0a58e;  /* bar for a day that went over target */
   --n-protein: #5f7d4a;
   --n-carbs: #cf9646;
   --n-fat: #1e1b16;
@@ -45,15 +70,101 @@
   --n-sodium: #a68a64;
   --n-sugar: #c05f3e;
 
+  /* chart furniture */
+  --grid: #efe7d6;         /* horizontal grid lines + ring track */
+  --axis: #ddd3bf;         /* the one solid axis line */
+  --guide: #c9c0ae;        /* dashed guides + the raw (un-smoothed) weight line */
+  --ring-a: #d0714f;       /* calorie ring gradient */
+  --ring-b: #b0492b;
+
   --grad-accent: linear-gradient(160deg, #c96a48, #b34e2d);
   --grad-sidebar: linear-gradient(160deg, #ede6d7, #e5ddca);
   --grad-warm: linear-gradient(160deg, #fbf1e9, #f7e8de);
 
   --shadow-card: 0 1px 2px rgba(30, 27, 22, .04), 0 12px 30px -18px rgba(30, 27, 22, .22);
+  --shadow-nav: 0 1px 2px rgba(30, 27, 22, .05), 0 6px 16px -10px rgba(30, 27, 22, .3);
+  --shadow-modal: 0 30px 80px -20px rgba(30, 27, 22, .6);
   --shadow-accent: 0 6px 16px -6px rgba(176, 73, 43, .6);
 
   --sans: "Open Sans", system-ui, -apple-system, sans-serif;
   --tabbar-h: 62px;
+}
+
+/* Dark. Applied by the bootstrap in index.html before first paint, so the light
+   theme never flashes. Shadows drop their sandstone tint for plain black at a
+   higher opacity — a warm shadow over a warm-black surface just reads as haze. */
+:root[data-theme="dark"] {
+  --surface: #1a1610;
+  --card: #221d16;
+  --sunk: #1a1610;
+  --modal: #221d16;
+  --chip: #2c261d;
+  --track: #2f281f;
+  --hover: #2a241c;
+  --tabbar: rgba(20, 17, 12, .92);
+
+  --ink: #ede4d3;
+  --body: #cabfa8;
+  --muted: #9a9080;
+  --label: #8f8676;
+  --sub: #8f8676;
+  --placeholder: #6f6656;
+  --ink-soft: #9a9080;
+  --ink-soft-hover: #ede4d3;
+  --tab-ink: #7d7466;
+
+  --line: #332c22;
+  --line-strong: #443b2d;
+  --divider: #2f281f;
+  --sidebar-line: #2c261d;
+  --warm-line: #4a3524;
+  --nav-line: #3a3125;
+
+  --terracotta: #e08056;
+  --olive: #8fb069;
+  --amber: #d9a44f;
+  --sage: #a8ba7c;
+  --tan: #c0a074;
+  /* #b34e2d reads fine on cream but goes muddy on near-black; lift it, while
+     keeping it clearly redder than the terracotta accent it sits next to. */
+  --over: #e2603a;
+
+  --nav-hover: rgba(255, 253, 248, .05);
+  --nav-section: #6f6656;
+  --chip-hover: #363023;
+  --chip-on: #e08056;
+  --chip-on-ink: #1a1610;
+  --tag: #3a2f1e;
+  --tag-ink: #d0a256;
+  --x-hover: #3a3428;
+  --grab: #4a4030;
+  --scrim: rgba(0, 0, 0, .62);
+
+  --n-calories: #e08056;
+  --n-calories-faded: #a85333;
+  --n-protein: #8fb069;
+  --n-carbs: #d9a44f;
+  --n-fat: #e2d5bf;        /* near-black in light, so it has to invert or it vanishes */
+  --n-fiber: #a8ba7c;
+  --n-sodium: #c0a074;
+  --n-sugar: #e08056;
+
+  --grid: #2a241b;
+  --axis: #5a5040;
+  --guide: #5a5040;
+  --ring-a: #e08056;
+  --ring-b: #c05f3e;
+
+  --grad-accent: linear-gradient(160deg, #d1704a, #b34e2d);
+  --grad-sidebar: linear-gradient(160deg, #1f1b14, #17130e);
+  --grad-warm: linear-gradient(160deg, #2a2016, #251a12);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 30px -18px rgba(0, 0, 0, .7);
+  --shadow-nav: 0 1px 2px rgba(0, 0, 0, .35), 0 6px 16px -10px rgba(0, 0, 0, .8);
+  --shadow-modal: 0 30px 80px -20px rgba(0, 0, 0, .8);
+  --shadow-accent: 0 6px 16px -6px rgba(0, 0, 0, .7);
+
+  color-scheme: dark;      /* native date pickers, scrollbars, form controls */
 }
 
 * { box-sizing: border-box; }
@@ -97,7 +208,7 @@ input, select, textarea { font: inherit; color: inherit; }
   padding: 11px 12px;
   border-radius: 11px;
   font: 600 14px var(--sans);
-  color: #7a715f;
+  color: var(--ink-soft);
   border: 1px solid transparent;
   transition: .16s;
   text-align: left;
@@ -109,12 +220,12 @@ input, select, textarea { font: inherit; color: inherit; }
   stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
   flex: none;
 }
-.nav-item:hover { background: rgba(255, 253, 248, .6); color: #4a4335; }
+.nav-item:hover { background: var(--nav-hover); color: var(--ink-soft-hover); }
 .nav-item.active {
   background: var(--card);
   color: var(--terracotta);
-  border-color: #ecdfc8;
-  box-shadow: 0 1px 2px rgba(30, 27, 22, .05), 0 6px 16px -10px rgba(30, 27, 22, .3);
+  border-color: var(--nav-line);
+  box-shadow: var(--shadow-nav);
 }
 
 .nav-section {
@@ -123,7 +234,7 @@ input, select, textarea { font: inherit; color: inherit; }
   font: 600 9px var(--sans);
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: #b0a794;
+  color: var(--nav-section);
 }
 
 .sidebar-foot {
@@ -175,7 +286,7 @@ input, select, textarea { font: inherit; color: inherit; }
   box-shadow: var(--shadow-card);
   min-width: 0;
 }
-.card.warm { background: var(--grad-warm); border-color: #f0dcc9; }
+.card.warm { background: var(--grad-warm); border-color: var(--warm-line); }
 .card.list { padding: 8px 12px; }
 
 .card-title {
@@ -238,19 +349,19 @@ input, select, textarea { font: inherit; color: inherit; }
   padding: 7px 15px;
   border-radius: 20px;
   background: var(--chip);
-  color: #7a715f;
+  color: var(--ink-soft);
   transition: .15s;
 }
-.chip:hover { background: #e7dfcc; }
-.chip.active, .chip.active:hover { background: var(--ink); color: var(--surface); }
+.chip:hover { background: var(--chip-hover); }
+.chip.active, .chip.active:hover { background: var(--chip-on); color: var(--chip-on-ink); }
 .seg { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .tag {
   font: 600 10px var(--sans);
   padding: 4px 9px;
   border-radius: 6px;
-  background: #efe4d0;
-  color: #a07a3c;
+  background: var(--tag);
+  color: var(--tag-ink);
   letter-spacing: .03em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -282,7 +393,7 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .qa:hover { background: var(--terracotta); color: var(--terracotta-ink); border-color: var(--terracotta); }
 .qa.danger { color: var(--muted); font-size: 15px; }
-.qa.danger:hover { background: #b34e2d; color: var(--terracotta-ink); border-color: #b34e2d; }
+.qa.danger:hover { background: var(--over); color: var(--terracotta-ink); border-color: var(--over); }
 
 .kpi {
   background: var(--card);
@@ -367,7 +478,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* ── dialogs ──────────────────────────────────────────────────────────────── */
 .scrim {
   position: fixed; inset: 0;
-  background: rgba(30, 27, 22, .4);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
   z-index: 50;
@@ -379,7 +490,7 @@ input, select, textarea { font: inherit; color: inherit; }
   max-height: calc(100vh - 40px);
   background: var(--modal);
   border-radius: 18px;
-  box-shadow: 0 30px 80px -20px rgba(30, 27, 22, .6);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -405,7 +516,7 @@ input, select, textarea { font: inherit; color: inherit; }
   font: 600 15px var(--sans); flex: none;
   transition: .15s;
 }
-.x:hover { background: #e4dbc8; color: var(--ink); }
+.x:hover { background: var(--x-hover); color: var(--ink); }
 
 /* bottom tab bar — mobile only */
 .tabbar { display: none; }
@@ -436,7 +547,7 @@ input, select, textarea { font: inherit; color: inherit; }
     left: 0; right: 0; bottom: 0;
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: #ece5d6;
+    background: var(--tabbar);
     border-top: 1px solid var(--sidebar-line);
     z-index: 40;
   }
@@ -451,7 +562,7 @@ input, select, textarea { font: inherit; color: inherit; }
     padding: 8px 2px;
     font-size: 9.5px;
     letter-spacing: .01em;
-    color: #a29a8b;
+    color: var(--tab-ink);
   }
   .tabbar .nav-item svg { width: 17px; height: 17px; stroke-width: 1.4; }
   .tabbar .nav-item.active { background: transparent; box-shadow: none; color: var(--terracotta); }
@@ -471,7 +582,7 @@ input, select, textarea { font: inherit; color: inherit; }
     display: block;
     width: 38px; height: 4px;
     border-radius: 3px;
-    background: #cabfa8;
+    background: var(--grab);
     margin: 9px auto 0;
     flex: none;
   }

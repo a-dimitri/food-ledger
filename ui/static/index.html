@@ -8,6 +8,18 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
+<!-- Theme, resolved before first paint so the light theme never flashes on a
+     dark-mode load. Deliberately inline and dependency-free: app.js is deferred,
+     and anything deferred is too late to stop the flash. -->
+<script>
+  (function () {
+    var pref = null;
+    try { pref = localStorage.getItem("ledger-theme"); } catch (e) { /* private mode */ }
+    var dark = pref === "dark" ||
+      (pref !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    if (dark) document.documentElement.dataset.theme = "dark";
+  })();
+</script>
 <!-- PWA -->
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#f6f2e9">

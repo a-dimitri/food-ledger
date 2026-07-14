@@ -8,10 +8,12 @@ const NUTRIENTS = [
 ];
 const MACROS = ["protein", "carbs", "fat", "fiber", "sodium", "sugar"];
 
-// Mirrors the --n-* custom properties in styles.css.
+// Indirections into the --n-* custom properties in styles.css, not literals: the
+// charts are inline SVG, so var() resolves in their fill/stroke attributes and a
+// theme swap recolours every chart on screen without re-rendering one.
 const NUTRIENT_COLORS = {
-  calories: "#c05f3e", protein: "#5f7d4a", carbs: "#cf9646",
-  fat: "#1e1b16", fiber: "#9bab6f", sodium: "#a68a64", sugar: "#c05f3e",
+  calories: "var(--n-calories)", protein: "var(--n-protein)", carbs: "var(--n-carbs)",
+  fat: "var(--n-fat)", fiber: "var(--n-fiber)", sodium: "var(--n-sodium)", sugar: "var(--n-sugar)",
 };
 const LABELS = Object.fromEntries(NUTRIENTS.map(([k, l]) => [k, l]));
 
@@ -26,6 +28,45 @@ const $ = (id) => document.getElementById(id);
 // Must match the breakpoint in styles.css.
 const mq = window.matchMedia("(max-width: 860px)");
 const isMobile = () => mq.matches;
+
+// ── theme ────────────────────────────────────────────────────────────────────
+// Three settings, two themes: "system" follows the OS, "light"/"dark" pin it.
+// The <head> bootstrap has already applied the right one by the time we get here;
+// this half owns changes — the toggle, and the OS flipping under a "system" pref.
+const THEME_KEY = "ledger-theme";
+const THEMES = ["system", "light", "dark"];
+const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+
+// localStorage throws in Safari private browsing rather than no-op'ing, and a
+// theme preference is never worth taking the app down over.
+function themePref() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return THEMES.includes(v) ? v : "system";
+  } catch (e) { return "system"; }
+}
+
+function isDark(pref) { return pref === "dark" || (pref === "system" && darkMq.matches); }
+
+function applyTheme(pref) {
+  const dark = isDark(pref);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // Tint the mobile browser chrome / iOS status bar to match the app background.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", dark ? "#1a1610" : "#f6f2e9");
+}
+
+function setTheme(pref) {
+  try { localStorage.setItem(THEME_KEY, pref); } catch (e) { /* private mode */ }
+  applyTheme(pref);
+}
+
+// Only meaningful under "system" — a pinned theme ignores the OS.
+darkMq.addEventListener("change", () => {
+  const pref = themePref();
+  if (pref === "system") applyTheme(pref);
+  if (state.view === "settings") renderThemeToggle();
+});
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -101,17 +142,17 @@ function ringSvg(consumed, target) {
   const pct = target > 0 ? Math.min(1, consumed / target) : 0;
   return `<svg viewBox="0 0 76 76" style="width:104px;height:104px;flex:none" aria-hidden="true">
     <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#d0714f"/><stop offset="1" stop-color="#b0492b"/>
+      <stop offset="0" stop-color="var(--ring-a)"/><stop offset="1" stop-color="var(--ring-b)"/>
     </linearGradient></defs>
-    <circle cx="38" cy="38" r="${R}" fill="none" stroke="#ece4d3" stroke-width="8"/>
+    <circle cx="38" cy="38" r="${R}" fill="none" stroke="var(--track)" stroke-width="8"/>
     <circle cx="38" cy="38" r="${R}" fill="none" stroke="url(#ring)" stroke-width="8"
       stroke-linecap="round" stroke-dasharray="${(pct * C).toFixed(1)} ${C.toFixed(1)}"
       transform="rotate(-90 38 38)"/>
     <g class="ring-label">
       <text x="38" y="35" text-anchor="middle" font-family="Open Sans" font-weight="700"
-        font-size="19" fill="#1e1b16">${commas(consumed)}</text>
+        font-size="19" fill="var(--ink)">${commas(consumed)}</text>
       <text x="38" y="49" text-anchor="middle" font-family="Open Sans" font-weight="600"
-        font-size="8" fill="#9a917f">${target ? "OF " + commas(target) : "NO TARGET"}</text>
+        font-size="8" fill="var(--label)">${target ? "OF " + commas(target) : "NO TARGET"}</text>
     </g>
   </svg>`;
 }
@@ -128,8 +169,8 @@ function macroBars(totals, targets) {
     return `<div class="macro">
       <span class="lbl">${LABELS[key]}</span>
       <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background-color:${
-        over ? "#b34e2d" : NUTRIENT_COLORS[key]}"></div></div>
-      <span class="mut"${over ? ' style="color:#b34e2d"' : ""}>${shown}</span>
+        over ? "var(--over)" : NUTRIENT_COLORS[key]}"></div></div>
+      <span class="mut"${over ? ' style="color:var(--over)"' : ""}>${shown}</span>
     </div>`;
   }).join("");
 }
@@ -157,7 +198,7 @@ async function renderDay() {
       <div class="hide-mobile">
         <div class="lbl">${remaining >= 0 ? "Remaining" : "Over by"}</div>
         <div class="big ${remaining >= 0 ? "tc" : ""}" style="font-size:40px${
-          remaining < 0 ? ";color:#b34e2d" : ""}">${calTarget ? commas(Math.abs(remaining)) : "—"}</div>
+          remaining < 0 ? ";color:var(--over)" : ""}">${calTarget ? commas(Math.abs(remaining)) : "—"}</div>
         <div class="mut">${calTarget ? "kcal" : "no calorie target set"}</div>
       </div>
       <div class="show-mobile">
@@ -297,9 +338,9 @@ function caloriesBarChart(days, target, today) {
   for (let g = 0; g <= niceMax + 0.5; g += step) {
     const y = sy(g);
     grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"
-        stroke="#efe7d6" stroke-width="1"/>
+        stroke="var(--grid)" stroke-width="1"/>
       <text x="${padL - 7}" y="${(y + 3).toFixed(1)}" text-anchor="end"
-        font-family="Open Sans" font-size="9" fill="#9a917f">${commas(g)}</text>`;
+        font-family="Open Sans" font-size="9" fill="var(--label)">${commas(g)}</text>`;
   }
 
   const bars = days.map((d, i) => {
@@ -311,7 +352,7 @@ function caloriesBarChart(days, target, today) {
     // Over-target bars go pale; today is dimmed and dash-outlined, so "in
     // progress" never reads as "over target".
     const style = isToday
-      ? 'opacity=".5" stroke="#b34e2d" stroke-width="1" stroke-dasharray="3 2"'
+      ? 'opacity=".5" stroke="var(--over)" stroke-width="1" stroke-dasharray="3 2"'
       : "";
     // Full-height transparent hit target: thin bars are hard to tap otherwise.
     return `<rect class="hit" x="${(padL + i * slot).toFixed(1)}" y="${padT}"
@@ -319,29 +360,29 @@ function caloriesBarChart(days, target, today) {
         data-bar="${i}" data-date="${d.date}" data-val="${v}"
         data-cx="${(padL + i * slot + slot / 2).toFixed(1)}" data-top="${y.toFixed(1)}"/>
       <rect data-bar="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}"
-        height="${Math.max(1, baseY - y).toFixed(1)}" rx="3" fill="${over ? "#e0a58e" : "#c05f3e"}"
+        height="${Math.max(1, baseY - y).toFixed(1)}" rx="3" fill="${over ? "var(--n-calories-faded)" : "var(--n-calories)"}"
         ${style}/>`;
   }).join("");
 
   const ty = target ? sy(target) : null;
   const targetLine = target
     ? `<line x1="${padL}" y1="${ty.toFixed(1)}" x2="${W - padR}" y2="${ty.toFixed(1)}"
-         stroke="#c05f3e" stroke-width="1" stroke-dasharray="5 4" opacity=".55"/>
+         stroke="var(--n-calories)" stroke-width="1" stroke-dasharray="5 4" opacity=".55"/>
        <text x="${W - padR}" y="${(ty - 5).toFixed(1)}" text-anchor="end"
-         font-family="Open Sans" font-size="9.5" fill="#c05f3e">target ${commas(target)}</text>`
+         font-family="Open Sans" font-size="9.5" fill="var(--n-calories)">target ${commas(target)}</text>`
     : "";
 
   // Selection layer, repositioned on tap: a soft column band behind the bar and
   // a value label above it. Far cleaner than stroking the bar itself.
   const selection = `<rect id="cal-hl" x="0" y="${padT}" width="${slot.toFixed(1)}"
-      height="${plotH.toFixed(1)}" rx="7" fill="#c05f3e" opacity="0"/>
+      height="${plotH.toFixed(1)}" rx="7" fill="var(--n-calories)" opacity="0"/>
     <text id="cal-hl-val" x="0" y="0" text-anchor="middle" font-family="Open Sans"
-      font-weight="700" font-size="11" fill="#1e1b16" opacity="0"></text>`;
+      font-weight="700" font-size="11" fill="var(--ink)" opacity="0"></text>`;
 
   return `<div class="readout" id="cal-readout"><span class="placeholder">Tap a bar for its total</span></div>
     <svg class="chart" id="cal-chart" viewBox="0 0 ${W} ${H}"
       role="img" aria-label="Daily calories versus target">
-      ${grid}<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${baseY}" stroke="#ddd3bf" stroke-width="1"/>
+      ${grid}<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${baseY}" stroke="var(--axis)" stroke-width="1"/>
       ${selection}${targetLine}${bars}</svg>`;
 }
 
@@ -356,7 +397,7 @@ function intakeChart(days, hidden) {
   const x = (i) => (i / (n - 1)) * (W - 20) + 10;
 
   const grid = [44, 88, 132].map((y) =>
-    `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#efe7d6" stroke-width="1"/>`).join("");
+    `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`).join("");
 
   // Bands are assigned over the visible series so a filtered chart uses the
   // full height rather than leaving gaps where hidden series used to sit.
@@ -389,7 +430,7 @@ function intakeChart(days, hidden) {
   return `<div class="readout" id="intake-readout"><span class="placeholder">Tap the chart for a day's values · tap the legend to filter</span></div>
     <svg class="chart" id="intake-chart" viewBox="0 0 ${W} ${H}" style="height:200px"
       preserveAspectRatio="none" role="img" aria-label="Intake over time">
-      ${grid}<line id="intake-guide" y1="0" y2="${H}" stroke="#1e1b16" stroke-width="1"
+      ${grid}<line id="intake-guide" y1="0" y2="${H}" stroke="var(--ink)" stroke-width="1"
         stroke-dasharray="3 3" opacity="0"/>${lines}${hits}</svg>
     <div class="legend">${legend}</div>`;
 }
@@ -531,23 +572,23 @@ function weightChart(W, stats, goal) {
     const y1 = stats.intercept, y2 = stats.intercept + stats.slope_per_day * xMax;
     const p1 = `${sx(0).toFixed(1)},${sy(y1).toFixed(1)}`;
     const p2 = `${sx(xMax).toFixed(1)},${sy(y2).toFixed(1)}`;
-    trend = `<polyline fill="none" stroke="#5f7d4a" stroke-width="2.5" stroke-linecap="round"
+    trend = `<polyline fill="none" stroke="var(--olive)" stroke-width="2.5" stroke-linecap="round"
       stroke-dasharray="7 5" points="${p1} ${p2}"/>`;
     area = `<path d="M${p1} L${p2} L${sx(xMax).toFixed(1)},${height} L${sx(0).toFixed(1)},${height} Z"
       fill="url(#wf)"/>`;
   }
   const goalLine = goal != null
     ? `<line x1="12" y1="${sy(goal).toFixed(1)}" x2="${width - 12}" y2="${sy(goal).toFixed(1)}"
-         stroke="#c05f3e" stroke-width="1" stroke-dasharray="4 3"/>
+         stroke="var(--terracotta)" stroke-width="1" stroke-dasharray="4 3"/>
        <text x="${width - 12}" y="${(sy(goal) - 5).toFixed(1)}" text-anchor="end"
-         font-family="Open Sans" font-size="10" fill="#c05f3e">goal ${goal.toFixed(1)} kg</text>`
+         font-family="Open Sans" font-size="10" fill="var(--terracotta)">goal ${goal.toFixed(1)} kg</text>`
     : "";
 
   const last = W[W.length - 1];
   // Visible markers, then a wider transparent hit target per weigh-in so the
   // point is tappable on touch. Handlers are wired in renderWeight.
   const markers = xs.map((x, i) => `<circle class="pt" cx="${sx(x).toFixed(1)}"
-    cy="${sy(ys[i]).toFixed(1)}" r="3.5" fill="#5f7d4a"><title>${
+    cy="${sy(ys[i]).toFixed(1)}" r="3.5" fill="var(--olive)"><title>${
     (W[i].datetime || W[i].date).slice(0, 10)}: ${ys[i].toFixed(1)} kg</title></circle>`).join("");
   const hits = xs.map((x, i) => `<circle class="hit" cx="${sx(x).toFixed(1)}"
     cy="${sy(ys[i]).toFixed(1)}" r="14" data-w="${i}"/>`).join("");
@@ -556,20 +597,20 @@ function weightChart(W, stats, goal) {
     <svg class="chart" id="weight-chart" viewBox="0 0 ${width} ${height}" style="height:230px"
       role="img" aria-label="Weight over time">
     <defs><linearGradient id="wf" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#5f7d4a" stop-opacity=".22"/>
-      <stop offset="1" stop-color="#5f7d4a" stop-opacity="0"/>
+      <stop offset="0" stop-color="var(--olive)" stop-opacity=".22"/>
+      <stop offset="1" stop-color="var(--olive)" stop-opacity="0"/>
     </linearGradient></defs>
-    <line x1="0" y1="46" x2="${width}" y2="46" stroke="#efe7d6"/>
-    <line x1="0" y1="100" x2="${width}" y2="100" stroke="#efe7d6"/>
-    <line x1="0" y1="154" x2="${width}" y2="154" stroke="#efe7d6"/>
+    <line x1="0" y1="46" x2="${width}" y2="46" stroke="var(--grid)"/>
+    <line x1="0" y1="100" x2="${width}" y2="100" stroke="var(--grid)"/>
+    <line x1="0" y1="154" x2="${width}" y2="154" stroke="var(--grid)"/>
     ${area}${goalLine}
-    <polyline fill="none" stroke="#c9c0ae" stroke-width="2" points="${raw}"/>
+    <polyline fill="none" stroke="var(--guide)" stroke-width="2" points="${raw}"/>
     ${trend}
     ${markers}
-    <circle id="weight-sel" cx="0" cy="0" r="6" fill="#c05f3e" stroke="#fffdf8"
+    <circle id="weight-sel" cx="0" cy="0" r="6" fill="var(--terracotta)" stroke="var(--card)"
       stroke-width="2.5" opacity="0"/>
     <circle cx="${sx(xs[xs.length - 1]).toFixed(1)}" cy="${sy(last.kg).toFixed(1)}" r="6"
-      fill="#5f7d4a" stroke="#fffdf8" stroke-width="2.5"/>
+      fill="var(--olive)" stroke="var(--card)" stroke-width="2.5"/>
     ${hits}
   </svg>`;
 }
@@ -772,10 +813,19 @@ async function renderSettings() {
         ${NUTRIENTS.map(([key, label, unit]) =>
           inputRow("t-" + key, `${label}${unit ? ` (${unit})` : ""}`, t[key])).join("")}
       </div>
-      <div class="card list" style="flex:1">
-        <div class="card-title">Weight goal</div>
-        ${inputRow("g-weight", "Goal weight (kg)", dash.goal_weight)}
-        ${inputRow("g-date", "Goal date", dash.goal_date, 'type="date"')}
+      <div class="stack" style="flex:1">
+        <div class="card list">
+          <div class="card-title">Weight goal</div>
+          ${inputRow("g-weight", "Goal weight (kg)", dash.goal_weight)}
+          ${inputRow("g-date", "Goal date", dash.goal_date, 'type="date"')}
+        </div>
+        <div class="card list">
+          <div class="card-title">Appearance</div>
+          <div class="row">
+            <span class="mut" style="flex:1">Theme</span>
+            <div class="seg" id="theme-seg" style="flex:none"></div>
+          </div>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
@@ -783,7 +833,24 @@ async function renderSettings() {
       <div class="spacer"></div>
       <button class="pill fill" id="settings-save">Save changes</button>
     </div>`;
+  renderThemeToggle();
   $("settings-save").onclick = saveSettings;
+}
+
+// The theme applies on tap and persists itself — it deliberately does not wait for
+// "Save changes", which is scoped to the server-side targets and goal.
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" };
+
+function renderThemeToggle() {
+  const seg = $("theme-seg");
+  if (!seg) return;
+  const pref = themePref();
+  seg.innerHTML = THEMES.map((k) =>
+    `<button class="chip${k === pref ? " active" : ""}" data-theme-opt="${k}"
+       aria-pressed="${k === pref}">${THEME_LABELS[k]}</button>`).join("");
+  seg.querySelectorAll("[data-theme-opt]").forEach((b) => {
+    b.onclick = () => { setTheme(b.dataset.themeOpt); renderThemeToggle(); };
+  });
 }
 
 async function saveSettings() {
@@ -1105,6 +1172,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function init() {
+  // The <head> bootstrap already set data-theme for dark; re-applying normalises
+  // the light case to an explicit value and tints the browser chrome to match.
+  applyTheme(themePref());
   const { today } = await api("/api/today");
   state.today = today;
   state.selectedDate = today;
