@@ -9,10 +9,6 @@ __pycache__/
 
 # Not part of the service
 tests/
-migrate/
-build_tracker.py
-food-tracker.html
-food_data.json
 *.dc.html
 *.md
 .claude/

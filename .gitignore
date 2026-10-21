@@ -19,14 +19,6 @@ service-account*.json
 # Claude Code local session / worktree data
 .claude/
 
-# Legacy version — kept locally as reference / migration source, not committed
-/build_tracker.py
-/food-tracker.html
-/food_data.json
-
-# One-time migration tooling — local only, not part of the ongoing web app
-/migrate/
-
 # Design sources (wireframe exports) — reference only, not part of the app
 /*.dc.html
 
