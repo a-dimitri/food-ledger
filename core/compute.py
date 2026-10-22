@@ -15,7 +15,7 @@ No derived value is ever persisted; callers compute on read.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from .nutrients import NUTRIENT_KEYS
 
@@ -105,10 +105,45 @@ def averages(
     """Mean daily intake across fully-tracked days, computed from raw entries.
 
     Convenience wrapper over averages_from_day_totals for callers holding entries
-    (and for the oracle tests). Production reads go through the rollups.
+    (and for tests). Production reads go through the rollups.
     """
     day_totals = all_day_totals(entries, entry_dates(entries))
     return averages_from_day_totals(day_totals, today, completed, ndigits)
+
+
+def phase_summary(
+    phase: dict[str, Any],
+    day_totals: dict[str, dict[str, float]],
+    today: str,
+    completed: Iterable[str] = (),
+    tolerance: float = 0.10,
+) -> dict[str, Any]:
+    """Average intake and calorie adherence over one phase's tracked days.
+
+    Tracked days follow the same rule as averages_from_day_totals. Adherence is
+    the share of tracked days whose calories landed within ±`tolerance` of the
+    phase's calorie target (None when the phase has no calorie target).
+    """
+    end = phase.get("end") or "9999-12-31"
+    in_phase = {d: t for d, t in day_totals.items() if phase["start"] <= d <= end}
+    avgs, count = averages_from_day_totals(in_phase, today, completed)
+    target = (phase.get("targets") or {}).get("calories")
+    adherence = None
+    if target and count:
+        completed_set = set(completed)
+        tracked = [d for d in in_phase if d != today or d in completed_set]
+        hits = sum(1 for d in tracked
+                   if abs(in_phase[d].get("calories", 0.0) - target) <= tolerance * target)
+        adherence = round(hits / len(tracked), 3)
+    return {"averages": avgs, "tracked_count": count, "adherence": adherence}
+
+
+def bmi(kg: float, height_cm: Optional[float]) -> Optional[float]:
+    """Body-mass index, or None without a height."""
+    if not height_cm:
+        return None
+    m = height_cm / 100
+    return round(kg / (m * m), 1)
 
 
 def _parse_weight_ts(w: Weight) -> datetime:

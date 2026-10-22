@@ -10,6 +10,8 @@ __pycache__/
 # Not part of the service
 tests/
 *.dc.html
+*-wireframe.html
+backups/
 *.md
 .claude/
 .DS_Store

@@ -60,6 +60,33 @@ class TestComputeInline(unittest.TestCase):
         self.assertIsNone(compute.weight_stats([{"datetime": "2026-01-01T08:00", "kg": 80.0}]))
 
 
+class TestPhaseSummary(unittest.TestCase):
+    def test_average_and_adherence_within_phase(self):
+        phase = {"start": "2026-01-02", "end": "2026-01-05", "targets": {"calories": 2000}}
+        day_totals = {
+            "2026-01-01": {"calories": 5000},   # before the phase — ignored
+            "2026-01-02": {"calories": 2100},   # within 10%
+            "2026-01-03": {"calories": 2500},   # over
+            "2026-01-04": {"calories": 1850},   # within 10%
+            "2026-01-05": {"calories": 900},    # today, in progress — not tracked
+        }
+        s = compute.phase_summary(phase, day_totals, today="2026-01-05")
+        self.assertEqual(s["tracked_count"], 3)
+        self.assertAlmostEqual(s["averages"]["calories"], 2150.0, delta=TOL)
+        self.assertAlmostEqual(s["adherence"], 0.667, delta=1e-3)
+
+    def test_no_calorie_target_means_no_adherence(self):
+        phase = {"start": "2026-01-01", "end": None, "targets": {}}
+        s = compute.phase_summary(phase, {"2026-01-01": {"calories": 2000}}, today="2026-02-01")
+        self.assertIsNone(s["adherence"])
+
+
+class TestBmi(unittest.TestCase):
+    def test_bmi(self):
+        self.assertEqual(compute.bmi(78.6, 178), 24.8)
+        self.assertIsNone(compute.bmi(78.6, None))
+
+
 class TestNumberCoercion(unittest.TestCase):
     def test_ignores_blank_and_boolean_values(self):
         entries = [

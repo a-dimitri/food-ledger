@@ -21,6 +21,10 @@ service-account*.json
 
 # Design sources (wireframe exports) — reference only, not part of the app
 /*.dc.html
+/*-wireframe.html
 
 # Internal design doc — not shipped in the public repo
 /REQUIREMENTS.md
+
+# Local Firestore backups (tools/migrate_v2.py backup) — personal data
+/backups/

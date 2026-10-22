@@ -8,7 +8,7 @@
 # updated in place.
 #
 # Configure by copying deploy.env.example to deploy.env and editing it, or by
-# exporting the same variables. Required: PROJECT_ID, ALLOWED_EMAIL.
+# exporting the same variables. Required: PROJECT_ID, ALLOWED_EMAILS.
 #
 #   ./deploy.sh
 #
@@ -27,7 +27,12 @@ if [ -f deploy.env ]; then
 fi
 
 PROJECT_ID="${PROJECT_ID:-}"
-ALLOWED_EMAIL="${ALLOWED_EMAIL:-}"
+# Space-separated Google accounts granted IAP access (one per profile). The app
+# itself admits an email only if it is listed on a profile in Firestore.
+# ALLOWED_EMAIL (singular, v1) is still accepted.
+ALLOWED_EMAILS="${ALLOWED_EMAILS:-${ALLOWED_EMAIL:-}}"
+# The MCP server still checks a single email until it moves to profiles.
+ALLOWED_EMAIL="${ALLOWED_EMAILS%% *}"
 REGION="${REGION:-australia-southeast1}"
 FIRESTORE_LOCATION="${FIRESTORE_LOCATION:-$REGION}"
 UI_SERVICE="${UI_SERVICE:-tracker-ui}"
@@ -43,11 +48,11 @@ die()  { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 # ── preflight ───────────────────────────────────────────────────────────────
 command -v gcloud >/dev/null || die "gcloud not found — install the Google Cloud CLI (https://cloud.google.com/sdk/docs/install)."
 [ -n "$PROJECT_ID" ]    || die "PROJECT_ID is not set. Copy deploy.env.example to deploy.env and fill it in."
-[ -n "$ALLOWED_EMAIL" ] || die "ALLOWED_EMAIL is not set. This is the Google account allowed to use the app."
+[ -n "$ALLOWED_EMAILS" ] || die "ALLOWED_EMAILS is not set. These are the Google accounts allowed to use the app."
 gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . \
   || die "No active gcloud login — run: gcloud auth login"
 
-step "Target: project=$PROJECT_ID  region=$REGION  user=$ALLOWED_EMAIL"
+step "Target: project=$PROJECT_ID  region=$REGION  users=$ALLOWED_EMAILS"
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 # ── APIs ────────────────────────────────────────────────────────────────────
@@ -75,16 +80,19 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 # ── web UI ──────────────────────────────────────────────────────────────────
 step "Deploying the web UI ($UI_SERVICE) behind IAP"
 # --iap fronts the service with Identity-Aware Proxy (Google login). The app
-# also validates IAP's injected identity header, and enforces ALLOWED_EMAIL.
+# also validates IAP's injected identity header, and admits only emails listed
+# on a profile (profiles/<id>.emails in Firestore).
 gcloud run deploy "$UI_SERVICE" \
   --source . --region "$REGION" \
   --min-instances=0 --no-allow-unauthenticated --iap \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ALLOWED_EMAIL=${ALLOWED_EMAIL}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
 
-step "Granting $ALLOWED_EMAIL access through IAP"
-gcloud run services add-iam-policy-binding "$UI_SERVICE" --region "$REGION" \
-  --member="user:${ALLOWED_EMAIL}" --role=roles/iap.httpsResourceAccessor >/dev/null \
-  || echo "WARN: could not add the IAP accessor binding automatically. Grant '$ALLOWED_EMAIL' the 'IAP-secured Web App User' role on $UI_SERVICE in the console."
+for email in $ALLOWED_EMAILS; do
+  step "Granting $email access through IAP"
+  gcloud run services add-iam-policy-binding "$UI_SERVICE" --region "$REGION" \
+    --member="user:${email}" --role=roles/iap.httpsResourceAccessor >/dev/null \
+    || echo "WARN: could not add the IAP accessor binding automatically. Grant '$email' the 'IAP-secured Web App User' role on $UI_SERVICE in the console."
+done
 # The IAP service agent must be able to invoke the service. gcloud --iap usually
 # wires this up; add it best-effort in case it did not.
 gcloud run services add-iam-policy-binding "$UI_SERVICE" --region "$REGION" \
@@ -141,7 +149,7 @@ fi
 # ── summary ─────────────────────────────────────────────────────────────────
 step "Done"
 bold "Web UI:  ${UI_URL}"
-echo "         Open it and sign in as ${ALLOWED_EMAIL}."
+echo "         Open it and sign in as one of: ${ALLOWED_EMAILS}."
 if [ "$DEPLOY_MCP" = "yes" ] && [ -n "$MCP_URL" ]; then
   bold "MCP:     ${MCP_URL}/mcp"
   echo "         Add this as a custom connector in Claude (see README)."
