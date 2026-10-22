@@ -31,8 +31,6 @@ PROJECT_ID="${PROJECT_ID:-}"
 # itself admits an email only if it is listed on a profile in Firestore.
 # ALLOWED_EMAIL (singular, v1) is still accepted.
 ALLOWED_EMAILS="${ALLOWED_EMAILS:-${ALLOWED_EMAIL:-}}"
-# The MCP server still checks a single email until it moves to profiles.
-ALLOWED_EMAIL="${ALLOWED_EMAILS%% *}"
 REGION="${REGION:-australia-southeast1}"
 FIRESTORE_LOCATION="${FIRESTORE_LOCATION:-$REGION}"
 UI_SERVICE="${UI_SERVICE:-tracker-ui}"
@@ -113,7 +111,7 @@ if [ "$DEPLOY_MCP" = "yes" ]; then
       step "Deploying $MCP_SERVICE (locked) to obtain its URL"
       gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
         --min-instances=0 --no-allow-unauthenticated \
-        --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ALLOWED_EMAIL=${ALLOWED_EMAIL}"
+        --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
       MCP_URL="$(gcloud run services describe "$MCP_SERVICE" --region "$REGION" --format='value(status.url)')"
     fi
     cat <<EOF
@@ -141,9 +139,11 @@ EOF
   fi
   # Public at the network layer (Claude reaches it without Google IAM); the app's
   # own OAuth bearer gates every /mcp call, and unauthenticated requests get 401.
+  # Login is admitted only for emails listed on a profile, and each person's
+  # tools act on their own profile.
   gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
     --min-instances=0 --allow-unauthenticated \
-    --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ALLOWED_EMAIL=${ALLOWED_EMAIL},ISSUER_URL=${MCP_URL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+    --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ISSUER_URL=${MCP_URL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
 fi
 
 # ── summary ─────────────────────────────────────────────────────────────────

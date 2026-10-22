@@ -109,6 +109,18 @@ class Store:
         snap = self.db.collection(PROFILES_COLLECTION).document(profile_id).get()
         return _with_id(snap) if snap.exists else None
 
+    def profile_id_for_email(self, email: str) -> Optional[str]:
+        """The profile whose `emails` lists `email` (case-insensitive), or None.
+        Raises ConflictError if more than one profile claims it — an ambiguous
+        identity must never silently pick one."""
+        query = self.db.collection(PROFILES_COLLECTION).where(
+            filter=FieldFilter("emails", "array_contains", email.lower())
+        ).limit(2)
+        ids = [d.id for d in query.stream()]
+        if len(ids) > 1:
+            raise ConflictError(f"{email} is listed on more than one profile")
+        return ids[0] if ids else None
+
     def update_profile(self, profile_id: str, data: dict[str, Any]) -> None:
         ref = self.db.collection(PROFILES_COLLECTION).document(profile_id)
         if not ref.get().exists:

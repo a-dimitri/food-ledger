@@ -6,8 +6,9 @@ metadata, /register, /authorize, /token, PKCE verification); this provider suppl
 the storage and the identity step:
 
   authorize()  -> redirect the user to Google sign-in
-  /google/callback -> verify the Google identity, enforce the single-user allowlist,
-                      mint our own authorization code, redirect back to Claude
+  /google/callback -> verify the Google identity, admit it only if the email
+                      belongs to a profile, mint our own authorization code,
+                      redirect back to Claude
   exchange_*   -> issue/refresh our own bearer tokens
 
 All client/code/token state lives in Firestore so it survives Cloud Run's
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -48,12 +49,15 @@ PENDING = "oauth_pending"
 
 class FirestoreOAuthProvider(OAuthAuthorizationServerProvider):
     def __init__(self, db, issuer_url: str, google_client_id: str,
-                 google_client_secret: str, allowed_email: Optional[str]):
+                 google_client_secret: str, profile_for_email: Callable[[str], Optional[str]]):
+        """`profile_for_email` maps a verified email to its profile id (None if
+        it has none). The token's subject is the email; each tool call maps it
+        to the profile again, so removing an email locks it out immediately."""
         self.db = db
         self.issuer_url = issuer_url.rstrip("/")
         self.google_client_id = google_client_id
         self.google_client_secret = google_client_secret
-        self.allowed_email = allowed_email
+        self.profile_for_email = profile_for_email
         self.callback_url = self.issuer_url + "/google/callback"
 
     def _doc(self, col: str, key: str):
@@ -96,7 +100,7 @@ class FirestoreOAuthProvider(OAuthAuthorizationServerProvider):
             raise ValueError("login state expired")
 
         email = await self._google_email(code)
-        if self.allowed_email and email != self.allowed_email:
+        if self.profile_for_email(email) is None:
             raise PermissionError(f"{email} is not authorized")
 
         params = AuthorizationParams.model_validate(pdata["params"])
@@ -133,7 +137,9 @@ class FirestoreOAuthProvider(OAuthAuthorizationServerProvider):
         email = info.get("email")
         if not email:
             raise ValueError("Google token had no email")
-        return email
+        if not info.get("email_verified"):
+            raise PermissionError(f"{email} is not a verified Google address")
+        return email.lower()
 
     # ── authorization codes → tokens ────────────────────────────────────
     async def load_authorization_code(
