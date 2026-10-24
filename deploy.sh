@@ -91,7 +91,10 @@ gcloud run deploy "$UI_SERVICE" \
 
 for email in $ALLOWED_EMAILS; do
   step "Granting $email access through IAP"
-  gcloud run services add-iam-policy-binding "$UI_SERVICE" --region "$REGION" \
+  # Cloud Run's direct IAP keeps its own policy: the accessor role is granted
+  # there, not on the Cloud Run service (which rejects this role).
+  gcloud iap web add-iam-policy-binding --resource-type=cloud-run \
+    --service="$UI_SERVICE" --region="$REGION" \
     --member="user:${email}" --role=roles/iap.httpsResourceAccessor >/dev/null \
     || echo "WARN: could not add the IAP accessor binding automatically. Grant '$email' the 'IAP-secured Web App User' role on $UI_SERVICE in the console."
 done

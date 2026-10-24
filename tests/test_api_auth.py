@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from fastapi.testclient import TestClient
 
@@ -45,7 +46,7 @@ def _as(email):
 class TestAuth(unittest.TestCase):
     def setUp(self):
         ui.app.dependency_overrides[ui.get_store] = _StubStore
-        ui._email_cache = (0.0, {})
+        ui._email_cache = None
         _StubStore.updates = []
         self.client = TestClient(ui.app)
 
@@ -72,6 +73,21 @@ class TestAuth(unittest.TestCase):
     def test_unknown_profile_is_404(self):
         r = self.client.get("/api/p/nobody/phases", headers=_as("antoni@example.com"))
         self.assertEqual(r.status_code, 404)
+
+    def test_fresh_instance_loads_profiles_immediately(self):
+        # Cloud Run starts a new instance with monotonic() near zero; the first
+        # request must still load the email list rather than trust an empty one.
+        with mock.patch.object(ui.time, "monotonic", return_value=3.0):
+            r = self.client.get("/api/me", headers=_as("antoni@example.com"))
+        self.assertEqual(r.status_code, 200)
+
+    def test_newly_added_profile_is_found_without_waiting(self):
+        self.client.get("/api/me", headers=_as("antoni@example.com"))   # warm the cache
+        PROFILES.append({"id": "new", "name": "New", "emails": ["new@example.com"]})
+        try:
+            self.assertEqual(self.client.get("/api/me", headers=_as("new@example.com")).json()["profile_id"], "new")
+        finally:
+            PROFILES.pop()
 
     def test_profile_patch_cannot_set_emails(self):
         r = self.client.patch("/api/profiles/antoni", json={"emails": ["evil@example.com"]},

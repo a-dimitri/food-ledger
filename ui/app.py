@@ -128,19 +128,29 @@ def current_email(
 
 # email -> profile id, refreshed every few minutes so a profile change on the
 # server is picked up without a redeploy (and without a read per request).
+# Starts empty-and-unloaded (None), never as "loaded at time 0": monotonic()
+# counts from an arbitrary origin, which on a fresh Cloud Run instance is near
+# zero, so a zero timestamp would look fresh and lock everyone out.
 _EMAIL_CACHE_TTL = 300
-_email_cache: tuple[float, dict[str, str]] = (0.0, {})
+_email_cache: Optional[tuple[float, dict[str, str]]] = None
 
 
-def _email_to_profile(store: Store) -> dict[str, str]:
+def _load_email_map(store: Store) -> dict[str, str]:
     global _email_cache
-    loaded_at, mapping = _email_cache
-    if time.monotonic() - loaded_at > _EMAIL_CACHE_TTL:
-        mapping = {
-            e.lower(): p["id"] for p in store.list_profiles() for e in p.get("emails", [])
-        }
-        _email_cache = (time.monotonic(), mapping)
+    mapping = {e.lower(): p["id"] for p in store.list_profiles() for e in p.get("emails", [])}
+    _email_cache = (time.monotonic(), mapping)
     return mapping
+
+
+def _profile_for_email(store: Store, email: str) -> Optional[str]:
+    if _email_cache is None or time.monotonic() - _email_cache[0] > _EMAIL_CACHE_TTL:
+        _load_email_map(store)
+    profile_id = _email_cache[1].get(email)
+    if profile_id is None:
+        # A miss may be a profile added since the last load; check once more.
+        # (Only IAP-admitted accounts get this far, so this can't be spammed.)
+        profile_id = _load_email_map(store).get(email)
+    return profile_id
 
 
 @dataclass
@@ -157,7 +167,7 @@ def caller(email: Optional[str] = Depends(current_email), store: Store = Depends
         if not profiles:
             raise HTTPException(status_code=503, detail="no profiles exist yet")
         return Caller(None, profiles[0]["id"])
-    profile_id = _email_to_profile(store).get(email)
+    profile_id = _profile_for_email(store, email)
     if profile_id is None:
         raise HTTPException(status_code=403, detail="not authorized")
     return Caller(email, profile_id)

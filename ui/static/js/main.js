@@ -170,7 +170,6 @@ async function switchProfile(id) {
 
 // Crossing the mobile/desktop breakpoint changes layouts (list+detail vs pages).
 onBreakpointChange(() => refresh());
-window.addEventListener("hashchange", route);
 
 async function init() {
   applyTheme(themePref());
@@ -185,6 +184,8 @@ async function init() {
   const remembered = rememberedProfile();
   const ids = session.me.profiles.map((x) => x.id);
   session.profileId = ids.includes(remembered) ? remembered : session.me.profile_id;
+  // Only route once /api/me has loaded: every view assumes a profile.
+  window.addEventListener("hashchange", route);
   await route();
 }
 
