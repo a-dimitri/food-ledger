@@ -104,12 +104,29 @@ gcloud run services add-iam-policy-binding "$UI_SERVICE" --region "$REGION" \
   --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
   --role=roles/run.invoker >/dev/null 2>&1 || true
 
-UI_URL="$(gcloud run services describe "$UI_SERVICE" --region "$REGION" --format='value(status.url)')"
+# A service's public URL. Cloud Run gives each service two permanent URLs; use
+# the readable https://<service>-<project number>.<region>.run.app one, so the
+# MCP server's ISSUER_URL (and the OAuth redirect URI derived from it) stays the
+# address people bookmark and connect Claude to. Falls back to status.url.
+# Prints nothing if the service doesn't exist yet.
+service_url() {
+  local info readable
+  info="$(gcloud run services describe "$1" --region "$REGION" \
+    --format='value(metadata.annotations["run.googleapis.com/urls"],status.url)' 2>/dev/null)" || return 0
+  readable="$(printf '%s' "$info" | grep -oE "https://${1}-${PROJECT_NUMBER}\.${REGION}\.run\.app" | head -1 || true)"
+  if [ -n "$readable" ]; then
+    echo "$readable"
+  else
+    printf '%s' "$info" | grep -oE 'https://[^",; ]+\.run\.app' | tail -1 || true
+  fi
+}
+
+UI_URL="$(service_url "$UI_SERVICE")"
 
 # ── MCP server (optional) ───────────────────────────────────────────────────
 MCP_URL=""
 if [ "$DEPLOY_MCP" = "yes" ]; then
-  MCP_URL="$(gcloud run services describe "$MCP_SERVICE" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
+  MCP_URL="$(service_url "$MCP_SERVICE")"
 
   if [ -z "$GOOGLE_CLIENT_ID" ] || { [ -z "$GOOGLE_CLIENT_SECRET" ] && [ -z "$GOOGLE_CLIENT_SECRET_NAME" ]; }; then
     # We need the service URL first so we can tell you which redirect URI to
@@ -119,7 +136,7 @@ if [ "$DEPLOY_MCP" = "yes" ]; then
       gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
         --min-instances=0 --no-allow-unauthenticated \
         --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
-      MCP_URL="$(gcloud run services describe "$MCP_SERVICE" --region "$REGION" --format='value(status.url)')"
+      MCP_URL="$(service_url "$MCP_SERVICE")"
     fi
     cat <<EOF
 
@@ -144,7 +161,7 @@ EOF
     gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
       --min-instances=0 --no-allow-unauthenticated \
       --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
-    MCP_URL="$(gcloud run services describe "$MCP_SERVICE" --region "$REGION" --format='value(status.url)')"
+    MCP_URL="$(service_url "$MCP_SERVICE")"
   fi
   # Public at the network layer (Claude reaches it without Google IAM); the app's
   # own OAuth bearer gates every /mcp call, and unauthenticated requests get 401.
