@@ -38,6 +38,10 @@ MCP_SERVICE="${MCP_SERVICE:-tracker-mcp}"
 DEPLOY_MCP="${DEPLOY_MCP:-no}"
 GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
 GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
+# Preferred over GOOGLE_CLIENT_SECRET: the name of a Secret Manager secret that
+# holds it. The service then reads the secret at runtime and its value never
+# appears in deploy.env or the service's plain environment.
+GOOGLE_CLIENT_SECRET_NAME="${GOOGLE_CLIENT_SECRET_NAME:-}"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -104,7 +108,7 @@ MCP_URL=""
 if [ "$DEPLOY_MCP" = "yes" ]; then
   MCP_URL="$(gcloud run services describe "$MCP_SERVICE" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
 
-  if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+  if [ -z "$GOOGLE_CLIENT_ID" ] || { [ -z "$GOOGLE_CLIENT_SECRET" ] && [ -z "$GOOGLE_CLIENT_SECRET_NAME" ]; }; then
     # We need the service URL first so we can tell you which redirect URI to
     # register on the OAuth client. Deploy it locked (no public access), then stop.
     if [ -z "$MCP_URL" ]; then
@@ -121,8 +125,10 @@ $(bold "MCP server is deployed but not yet usable — it needs a Google OAuth cl
      "OAuth client ID" → Application type "Web application".
   2. Under "Authorized redirect URIs" add exactly:
          ${MCP_URL}/google/callback
-  3. Copy the client ID and secret into deploy.env as GOOGLE_CLIENT_ID and
-     GOOGLE_CLIENT_SECRET, keep DEPLOY_MCP=yes, then re-run ./deploy.sh.
+  3. Copy the client ID into deploy.env as GOOGLE_CLIENT_ID, and either the
+     secret as GOOGLE_CLIENT_SECRET or (better) the name of a Secret Manager
+     secret holding it as GOOGLE_CLIENT_SECRET_NAME (see README). Keep
+     DEPLOY_MCP=yes, then re-run ./deploy.sh.
 EOF
     echo
     bold "Web UI is live: ${UI_URL}"
@@ -141,9 +147,19 @@ EOF
   # own OAuth bearer gates every /mcp call, and unauthenticated requests get 401.
   # Login is admitted only for emails listed on a profile, and each person's
   # tools act on their own profile.
-  gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
-    --min-instances=0 --allow-unauthenticated \
-    --set-env-vars "APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ISSUER_URL=${MCP_URL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+  MCP_ENV="APP_MODULE=mcp_server.app:app,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},ISSUER_URL=${MCP_URL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
+  if [ -n "$GOOGLE_CLIENT_SECRET_NAME" ]; then
+    # The secret stays in Secret Manager; the runtime service account needs the
+    # Secret Manager Secret Accessor role on it (see README).
+    gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
+      --min-instances=0 --allow-unauthenticated \
+      --set-env-vars "$MCP_ENV" \
+      --set-secrets "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET_NAME}:latest"
+  else
+    gcloud run deploy "$MCP_SERVICE" --source . --region "$REGION" \
+      --min-instances=0 --allow-unauthenticated \
+      --set-env-vars "${MCP_ENV},GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+  fi
 fi
 
 # ── summary ─────────────────────────────────────────────────────────────────
