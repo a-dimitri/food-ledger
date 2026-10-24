@@ -9,8 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/styles.css">
 <!-- Theme, resolved before first paint so the light theme never flashes on a
-     dark-mode load. Deliberately inline and dependency-free: app.js is deferred,
-     and anything deferred is too late to stop the flash. -->
+     dark-mode load. Deliberately inline and dependency-free: the app module is
+     deferred, and anything deferred is too late to stop the flash. -->
 <script>
   (function () {
     var pref = null;
@@ -32,278 +32,28 @@
 </head>
 <body>
 
-<div class="shell">
-  <!-- Sidebar (desktop). The bottom tab bar mirrors it on mobile; both are
-       driven by [data-view], wired once in app.js. -->
-  <nav class="sidebar">
-    <div class="brand">Ledger</div>
-    <div class="nav">
-      <button class="nav-item" data-view="day"><svg viewBox="0 0 16 16"><path d="M3 5h10M3 8h10M3 11h10"/></svg>Ledger</button>
-      <button class="nav-item" data-view="averages"><svg viewBox="0 0 16 16"><path d="M3 13V8M7 13V4M11 13V6M1.5 13h13"/></svg>Dashboard</button>
-      <button class="nav-item" data-view="weight"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 8l2.5-2"/></svg>Weight</button>
-      <button class="nav-item" data-view="foods"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="9" rx="1"/><path d="M3 6.8h10"/></svg>Pantry</button>
-      <div class="nav-section">Account</div>
-      <button class="nav-item" data-view="settings"><svg viewBox="0 0 16 16"><path d="M2 5h6M11 5h3M2 11h3M8 11h6"/><circle cx="9" cy="5" r="1.7"/><circle cx="6" cy="11" r="1.7"/></svg>Settings</button>
-    </div>
-    <div class="sidebar-foot">
-      <div class="avatar" id="avatar">·</div>
-      <div style="min-width:0">
-        <div class="who" id="who">Ledger</div>
-        <div class="mut" id="who-sub" style="font-size:11px">food &amp; weight</div>
-      </div>
-    </div>
-  </nav>
+<!-- Top bar. Desktop: brand, the four sections, then phase pill · ⚙ · avatar.
+     Mobile: ☰ (or ← on a sub-page), the page title, phase pill · avatar. -->
+<header class="topbar">
+  <button class="ic menu-btn" id="menu-btn" aria-label="Open menu">☰</button>
+  <a class="ic back-btn" id="back-btn" aria-label="Back" hidden>←</a>
+  <a class="brand" href="#/today">Ledger</a>
+  <nav class="sections" id="sections"></nav>
+  <div class="page-title" id="page-title"></div>
+  <div class="spacer"></div>
+  <a class="phase-pill" id="phase-pill" href="#/nutrition/phases" hidden></a>
+  <a class="ic settings-btn" id="settings-btn" href="#/settings" aria-label="Settings">⚙</a>
+  <a class="avatar" id="avatar" href="#/profiles" aria-label="Profiles">·</a>
+</header>
+<nav class="subtabs" id="subtabs"></nav>
 
-  <main class="main">
-    <!-- ── Ledger ─────────────────────────────────────────────────────────── -->
-    <section id="day-section" style="display:contents">
-      <div class="head">
-        <div>
-          <h1 class="h-title"><b id="day-title">Today</b></h1>
-          <div class="h-sub" id="day-sub"></div>
-        </div>
-        <div class="spacer"></div>
-        <div class="day-nav">
-          <button class="pill" id="day-prev" title="Previous day" aria-label="Previous day">‹</button>
-          <input class="box" id="day-picker" type="date">
-          <button class="pill" id="day-next" title="Next day" aria-label="Next day">›</button>
-          <button class="pill hide-mobile" id="day-today">Today</button>
-        </div>
-        <button class="pill fill" id="add-entry-btn">＋<span class="hide-mobile">Add entry</span></button>
-      </div>
-      <div class="body">
-        <div class="card" id="day-summary"></div>
-        <div class="grid2">
-          <div class="card list">
-            <div class="card-title" id="entries-title">Today's entries</div>
-            <div id="entry-list"></div>
-          </div>
-          <!-- Desktop-only sidebar column; mobile keeps the Ledger to the day's entries. -->
-          <div class="stack hide-mobile">
-            <div class="card">
-              <div class="card-title">Quick add from pantry</div>
-              <div id="quick-add"></div>
-            </div>
-            <div class="card warm" id="insight-card"></div>
-          </div>
-        </div>
-      </div>
-    </section>
+<!-- Mobile drawer -->
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-label="Menu" hidden></aside>
 
-    <!-- ── Dashboard ──────────────────────────────────────────────────────── -->
-    <section id="averages-section" style="display:contents" hidden>
-      <div class="head">
-        <div>
-          <h1 class="h-title"><b>Dashboard</b></h1>
-          <div class="h-sub" id="dash-sub"></div>
-        </div>
-        <div class="spacer"></div>
-        <div class="seg" id="range-seg">
-          <button class="chip" data-range="7">7d</button>
-          <button class="chip" data-range="30">30d</button>
-          <button class="chip" data-range="90">90d</button>
-        </div>
-      </div>
-      <div class="body" id="dash-body"></div>
-    </section>
+<main id="view" class="view"></main>
 
-    <!-- ── Weight ─────────────────────────────────────────────────────────── -->
-    <section id="weight-section" style="display:contents" hidden>
-      <div class="head">
-        <div>
-          <h1 class="h-title"><b>Weight</b></h1>
-          <div class="h-sub">Trend, weekly change &amp; maintenance estimate</div>
-        </div>
-        <div class="spacer"></div>
-        <button class="pill fill" id="add-weight-btn">＋ Weigh-in</button>
-      </div>
-      <div class="body" id="weight-body"></div>
-    </section>
-
-    <!-- ── Pantry ─────────────────────────────────────────────────────────── -->
-    <section id="foods-section" style="display:contents" hidden>
-      <div class="head">
-        <div>
-          <h1 class="h-title"><b>Pantry</b></h1>
-          <div class="h-sub" id="pantry-sub"></div>
-        </div>
-        <div class="spacer"></div>
-        <input class="box search" id="food-search" type="search" placeholder="Search foods…" autocomplete="off">
-        <button class="pill fill" id="add-food-btn">＋ Add item</button>
-      </div>
-      <div class="body" id="foods-body"></div>
-    </section>
-
-    <!-- ── Settings ───────────────────────────────────────────────────────── -->
-    <section id="settings-section" style="display:contents" hidden>
-      <div class="head">
-        <div>
-          <h1 class="h-title"><b>Settings</b></h1>
-          <div class="h-sub">Targets &amp; goals</div>
-        </div>
-      </div>
-      <div class="body" id="settings-body"></div>
-    </section>
-  </main>
-</div>
-
-<nav class="tabbar">
-  <button class="nav-item" data-view="day"><svg viewBox="0 0 16 16"><path d="M3 5h10M3 8h10M3 11h10"/></svg>Ledger</button>
-  <button class="nav-item" data-view="averages"><svg viewBox="0 0 16 16"><path d="M3 13V8M7 13V4M11 13V6M1.5 13h13"/></svg>Dashboard</button>
-  <button class="nav-item" data-view="weight"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 8l2.5-2"/></svg>Weight</button>
-  <button class="nav-item" data-view="foods"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="9" rx="1"/><path d="M3 6.8h10"/></svg>Pantry</button>
-  <button class="nav-item" data-view="settings"><svg viewBox="0 0 16 16"><path d="M2 5h6M11 5h3M2 11h3M8 11h6"/><circle cx="9" cy="5" r="1.7"/><circle cx="6" cy="11" r="1.7"/></svg>Settings</button>
-</nav>
-
-<!-- ── Add / edit entry ─────────────────────────────────────────────────────-->
-<div class="scrim" id="entry-modal" hidden>
-  <div class="modal">
-    <div class="grab"></div>
-    <div class="m-head">
-      <h2 class="m-title" id="entry-modal-title">Add entry</h2>
-      <button class="x" id="entry-cancel-x" aria-label="Close">✕</button>
-    </div>
-    <div class="m-body">
-      <div style="display:flex;gap:14px;align-items:flex-end">
-        <div class="field" style="flex:1">
-          <span class="lbl">From pantry (optional)</span>
-          <select class="box" id="f-catalogue"><option value="">— none —</option></select>
-        </div>
-        <div class="field" style="width:160px;flex:none">
-          <span class="lbl">Quantity ×</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <button class="step" id="f-qty-dec" aria-label="Decrease quantity">−</button>
-            <input class="box center" id="f-qty" type="number" step="any" min="0" value="1" inputmode="decimal" style="padding:12px 2px">
-            <button class="step" id="f-qty-inc" aria-label="Increase quantity">＋</button>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:14px">
-        <div class="field" style="flex:2"><span class="lbl">Name</span><input class="box" id="f-food" type="text" autocomplete="off"></div>
-        <div class="field" style="flex:1"><span class="lbl">Calories</span><input class="box" id="f-calories" type="number" step="any" inputmode="decimal"></div>
-      </div>
-
-      <div class="grid-6">
-        <div class="field"><span class="lbl">Prot g</span><input class="box center" id="f-protein" type="number" step="any" inputmode="decimal"></div>
-        <div class="field"><span class="lbl">Carb g</span><input class="box center" id="f-carbs" type="number" step="any" inputmode="decimal"></div>
-        <div class="field"><span class="lbl">Fat g</span><input class="box center" id="f-fat" type="number" step="any" inputmode="decimal"></div>
-        <div class="field"><span class="lbl">Fibre g</span><input class="box center" id="f-fiber" type="number" step="any" inputmode="decimal"></div>
-        <div class="field"><span class="lbl">Sod mg</span><input class="box center" id="f-sodium" type="number" step="any" inputmode="decimal"></div>
-        <div class="field"><span class="lbl">Sugar g</span><input class="box center" id="f-sugar" type="number" step="any" inputmode="decimal"></div>
-      </div>
-
-      <div class="grid-3">
-        <div class="field"><span class="lbl">Date</span><input class="box" id="f-date" type="date"></div>
-        <div class="field"><span class="lbl">Time</span><input class="box" id="f-time" type="time"></div>
-        <div class="field"><span class="lbl">Quantity</span><input class="box" id="f-quantity" type="text" autocomplete="off"></div>
-      </div>
-      <div style="display:flex;gap:14px">
-        <div class="field" style="flex:1"><span class="lbl">Source</span><input class="box" id="f-source" type="text" autocomplete="off"></div>
-        <div class="field" style="flex:2"><span class="lbl">Notes</span><input class="box" id="f-notes" type="text" autocomplete="off"></div>
-      </div>
-
-      <div class="mut" id="entry-hint" style="text-align:center"></div>
-      <div class="error" id="entry-error"></div>
-    </div>
-    <div class="m-foot">
-      <button class="pill sm" id="entry-save-food" title="Save these values as a reusable pantry item">★ Save to pantry</button>
-      <span class="spacer"></span>
-      <button class="pill" id="entry-cancel">Cancel</button>
-      <button class="pill fill" id="entry-save">Save entry</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Pantry item detail (mobile: tap a row) ───────────────────────────────-->
-<div class="scrim" id="food-detail-modal" hidden>
-  <div class="modal narrow">
-    <div class="grab"></div>
-    <div class="m-head">
-      <h2 class="m-title" id="fd-name">Item</h2>
-      <button class="x" id="fd-close" aria-label="Close">✕</button>
-    </div>
-    <div class="m-body">
-      <div class="mut" id="fd-serving"></div>
-      <div class="card" style="text-align:center;padding:16px">
-        <div class="lbl">Calories</div>
-        <div class="big" id="fd-calories" style="margin-top:4px">—</div>
-        <div class="mut">per serving</div>
-      </div>
-      <div class="grid-3" id="fd-macros"></div>
-      <div class="mut" id="fd-source"></div>
-    </div>
-    <div class="m-foot">
-      <button class="pill danger" id="fd-delete">Delete</button>
-      <span class="spacer"></span>
-      <button class="pill" id="fd-edit">Edit</button>
-      <button class="pill fill" id="fd-track">Track</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Add / edit pantry item ───────────────────────────────────────────────-->
-<div class="scrim" id="food-modal" hidden>
-  <div class="modal">
-    <div class="grab"></div>
-    <div class="m-head">
-      <h2 class="m-title" id="food-modal-title">New pantry item</h2>
-      <button class="x" id="food-cancel-x" aria-label="Close">✕</button>
-    </div>
-    <div class="m-body">
-      <div style="display:flex;gap:14px">
-        <div class="field" style="flex:2"><span class="lbl">Name</span><input class="box" id="cf-name" type="text" autocomplete="off" placeholder="e.g. Greek yogurt"></div>
-        <div class="field" style="flex:1"><span class="lbl">Serving</span><input class="box" id="cf-unit" type="text" autocomplete="off" placeholder="per 170 g"></div>
-      </div>
-      <div class="field"><span class="lbl">Calories</span><input class="box" id="cf-calories" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-      <div class="grid-3">
-        <div class="field"><span class="lbl">Protein (g)</span><input class="box center" id="cf-protein" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><span class="lbl">Carbs (g)</span><input class="box center" id="cf-carbs" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><span class="lbl">Fat (g)</span><input class="box center" id="cf-fat" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><span class="lbl">Fibre (g)</span><input class="box center" id="cf-fiber" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><span class="lbl">Sodium (mg)</span><input class="box center" id="cf-sodium" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><span class="lbl">Sugar (g)</span><input class="box center" id="cf-sugar" type="number" step="any" inputmode="decimal" placeholder="0"></div>
-      </div>
-      <div class="field"><span class="lbl">Source</span><input class="box" id="cf-source" type="text" autocomplete="off"></div>
-      <div class="mut">Nutrients are per <b>one serving</b>. Logging scales them by the quantity you pick.</div>
-      <div class="error" id="food-error"></div>
-    </div>
-    <div class="m-foot">
-      <button class="pill" id="food-cancel">Cancel</button>
-      <button class="pill fill" id="food-save">Save item</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── New weigh-in ─────────────────────────────────────────────────────────-->
-<div class="scrim" id="weight-modal" hidden>
-  <div class="modal narrow">
-    <div class="grab"></div>
-    <div class="m-head">
-      <h2 class="m-title">New weigh-in</h2>
-      <button class="x" id="weight-cancel-x" aria-label="Close">✕</button>
-    </div>
-    <div class="m-body">
-      <div class="field"><span class="lbl">When</span><input class="box" id="w-datetime" type="datetime-local"></div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:26px;padding:12px 0">
-        <button class="step lg" id="w-dec" aria-label="Decrease weight">−</button>
-        <div style="text-align:center;line-height:1">
-          <input class="box center" id="w-kg" type="number" step="any" inputmode="decimal"
-                 style="border:none;background:none;font:700 56px/1 var(--sans);letter-spacing:-.02em;width:190px;padding:0">
-          <div class="mut" style="margin-top:8px">kilograms</div>
-        </div>
-        <button class="step lg" id="w-inc" aria-label="Increase weight">＋</button>
-      </div>
-      <div class="error" id="weight-error"></div>
-    </div>
-    <div class="m-foot">
-      <button class="pill" id="weight-cancel">Cancel</button>
-      <button class="pill fill" id="weight-save">Save weigh-in</button>
-    </div>
-  </div>
-</div>
-
-<script src="/static/app.js"></script>
+<script type="module" src="/static/js/main.js"></script>
 <script>
   // Register the service worker so the app is installable and opens offline.
   if ("serviceWorker" in navigator) {

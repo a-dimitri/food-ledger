@@ -6,10 +6,28 @@
 // it also avoids the "stale JS after deploy" trap. Never touches /api/* (user
 // data + auth) or cross-origin requests (e.g. the IAP -> Google login redirect).
 
-const CACHE = "ledger-v1";
+const CACHE = "ledger-v2";
 const SHELL = [
-  "/static/app.js",
   "/static/styles.css",
+  "/static/js/main.js",
+  "/static/js/nav.js",
+  "/static/js/api.js",
+  "/static/js/util.js",
+  "/static/js/theme.js",
+  "/static/js/sheet.js",
+  "/static/js/charts.js",
+  "/static/js/forms.js",
+  "/static/js/workout-form.js",
+  "/static/js/views/today.js",
+  "/static/js/views/history.js",
+  "/static/js/views/profiles.js",
+  "/static/js/views/workouts.js",
+  "/static/js/views/routines.js",
+  "/static/js/views/exercises.js",
+  "/static/js/views/pantry.js",
+  "/static/js/views/phases.js",
+  "/static/js/views/insights.js",
+  "/static/js/views/settings.js",
   "/manifest.webmanifest",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
