@@ -43,19 +43,35 @@ export function ring(consumed, target, size = 92) {
   </svg>`;
 }
 
-export function macroBars(totals, targets, keys = MACROS, { compact = false } = {}) {
-  return keys.map((key) => {
-    const actual = totals?.[key] || 0;
-    const target = targets?.[key] || 0;
-    const pct = target ? Math.min(100, (actual / target) * 100) : 0;
-    const over = target && actual > target;
-    const shown = target ? `${fmtNutrient(key, actual)}/${fmtNutrient(key, target)}` : fmtNutrient(key, actual);
+const hasTarget = (targets, key) => (targets?.[key] || 0) > 0;
+
+/**
+ * Nutrients against targets. Only nutrients with a target get a bar (value /
+ * target); the rest are listed as plain totals on one line beneath, so an
+ * empty bar never suggests a goal that doesn't exist.
+ *   oneCol    bars in a single column (narrow cards)
+ *   compact   short labels (P, C, F…) for a phone
+ *   noTargets html shown when none of `keys` has a target (e.g. a "set targets" link)
+ */
+export function nutrientSummary(totals, targets, keys = MACROS, { oneCol = false, compact = false, noTargets = "" } = {}) {
+  const tracked = keys.filter((k) => hasTarget(targets, k));
+  const plain = keys.filter((k) => !hasTarget(targets, k));
+  const bars = tracked.map((key) => {
+    const actual = totals?.[key] || 0, target = targets[key];
+    const over = actual > target;
     return `<div class="macro">
-      <span class="lbl">${compact ? esc(SHORT[key] || LABELS[key]) : LABELS[key]}</span>
-      <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background-color:${over ? "var(--over)" : NUTRIENT_COLORS[key]}"></div></div>
-      <span class="mut"${over ? ' style="color:var(--over)"' : ""}>${shown}</span>
+      <span class="lbl">${esc(compact ? SHORT[key] || LABELS[key] : LABELS[key])}</span>
+      <div class="bar-bg"><div class="bar-fill" style="width:${Math.min(100, (actual / target) * 100)}%;background-color:${over ? "var(--over)" : NUTRIENT_COLORS[key]}"></div></div>
+      <span class="mut"${over ? ' style="color:var(--over)"' : ""}>${fmtNutrient(key, actual)}/${fmtNutrient(key, target)}</span>
     </div>`;
   }).join("");
+  const totalsLine = plain.length ? `<div class="untargeted mut">${plain.map((key) =>
+    `<span>${esc(LABELS[key])} <b>${fmtNutrient(key, totals?.[key] || 0)}</b> g</span>`).join("")}</div>` : "";
+  return `<div class="nutrients">
+    ${tracked.length ? `<div class="macro-grid${oneCol || tracked.length === 1 ? " one-col" : ""}">${bars}</div>` : ""}
+    ${totalsLine}
+    ${!tracked.length && noTargets ? `<div class="mut">${noTargets}</div>` : ""}
+  </div>`;
 }
 
 // Thin horizontal strip of a year's phases (Phases page).

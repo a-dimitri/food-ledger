@@ -5,7 +5,7 @@
 import { api, p, session, invalidate, loadDay, loadDash, loadWorkouts } from "../api.js";
 import { toast } from "../sheet.js";
 import { commas, esc, fmtDate, fmtDay, kg, phaseOn, shiftDate, signed } from "../util.js";
-import { macroBars, ring } from "../charts.js";
+import { nutrientSummary, ring } from "../charts.js";
 import { openFoodForm, openWeighIn } from "../forms.js";
 import { openWorkoutForm } from "../workout-form.js";
 import { isMobile, nav } from "../nav.js";
@@ -59,12 +59,15 @@ export async function render(root) {
             ? `<button class="chip${day.completed ? " active" : ""}" data-complete title="Count today in averages">${day.completed ? "✓ Day complete" : "Mark day complete"}</button>` : ""}</div>
         ${untracked ? `<div class="untracked-note"><b>${esc(phase.name || "Untracked")}</b> — an untracked window, so there are no targets and food isn't logged.</div>` : `
         <div class="summary">
-          ${ring(totals.calories || 0, calT)}
+          ${calT ? ring(totals.calories || 0, calT) : ""}
           <div class="summary-num">
             <div><span class="big">${calT ? commas(Math.abs(left)) : commas(totals.calories || 0)}</span></div>
-            <div class="mut">${calT ? (left >= 0 ? `of ${commas(calT)} kcal left` : `kcal over ${commas(calT)}`) : "kcal · no target"}</div>
+            <div class="mut">${calT ? (left >= 0 ? `of ${commas(calT)} kcal left` : `kcal over ${commas(calT)}`) : "kcal today"}</div>
           </div>
-          <div class="macro-grid">${macroBars(totals, targets, undefined, { compact: isMobile() })}</div>
+          ${nutrientSummary(totals, targets, undefined, {
+            compact: isMobile(),
+            noTargets: calT ? "" : `No targets for this day · <a class="link" href="${phase ? "#/nutrition/phases" : "#/settings"}">Set targets</a>`,
+          })}
         </div>`}
         <div class="entries">${day.entries.map((e) => `<button class="row row-btn" data-entry="${e.id}">
             <span class="mut time">${esc(e.time || "—")}</span>

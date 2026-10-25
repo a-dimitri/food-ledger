@@ -401,8 +401,12 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 .date-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .summary { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .summary-num { flex: none; min-width: 110px; }
-.macro-grid { flex: 1; min-width: 280px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 20px; }
-.macro-grid.one-col { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.nutrients { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 10px; }
+.card > .nutrients, .stack > .nutrients { min-width: 0; }
+.untargeted { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.untargeted b { color: var(--ink); font-weight: 700; }
+.macro-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 20px; }
+.macro-grid.one-col { grid-template-columns: minmax(0, 1fr); }
 .macro { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .macro .lbl { width: 48px; flex: none; }
 .macro .mut { width: 64px; flex: none; text-align: right; white-space: nowrap; font-size: 12px; }
@@ -416,7 +420,6 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 .weight-read .num { font-size: 17px; }
 .weight-read.faded .num { color: var(--muted); }
 .pinbar { display: none; }
-.debug-bar { display: flex !important; position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bar); border-top: 1px solid var(--bar-line); }
 
 /* ── charts ──────────────────────────────────────────────────────────────── */
 .chart-box { width: 100%; min-width: 0; }
@@ -538,7 +541,7 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
   .macro-grid { min-width: 0; gap: 8px 16px; }
   /* Beside the ring a phone leaves ~100px for two columns of bars, squeezing
      each bar to nothing; give the grid its own full-width row under the ring. */
-  .summary .macro-grid { flex: 1 1 100%; }
+  .summary .nutrients { flex: 1 1 100%; min-width: 0; }
   .macro .lbl { width: 26px; font-size: 9px; }
   .macro .mut { width: 54px; font-size: 11px; }
   .summary { gap: 14px; }

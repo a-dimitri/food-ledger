@@ -4,7 +4,7 @@
 import { session, loadDash, loadWorkouts } from "../api.js";
 import { MACROS, commas, daysBetween, esc, exerciseHistory, fmtDate, fmtDay, kg, phaseOn, setLabel,
   shiftDate, signed, targetsFor, weekStart } from "../util.js";
-import { macroBars, mount, rangeStart, timeChart, weekBars } from "../charts.js";
+import { mount, nutrientSummary, rangeStart, timeChart, weekBars } from "../charts.js";
 import { nav } from "../nav.js";
 
 const view = { range: "3m", weightMode: "kg", avgPhase: null };
@@ -66,7 +66,7 @@ function renderNutrition(el, { dash, today, start, phases }) {
       <div class="mut">${esc(fmtDate(sel.start, { day: "numeric", month: "short", year: "numeric" }))} – ${
         sel.end && sel.end < today ? esc(fmtDate(sel.end, { day: "numeric", month: "short", year: "numeric" })) : "now"} · ${n} tracked ${n === 1 ? "day" : "days"}</div>
       <div class="kv-line"><span class="big">${n ? commas(s.averages.calories) : "—"}</span><span class="mut">kcal / day${tg.calories ? ` · target ${commas(tg.calories)}` : ""}</span></div>
-      <div class="macro-grid one-col">${macroBars(n ? s.averages : {}, tg)}</div>
+      ${nutrientSummary(n ? s.averages : {}, tg, undefined, { oneCol: true })}
       <div class="mut">${s.adherence != null ? `<b>${Math.round(s.adherence * 100)}%</b> of days within 10% of the calorie target` : "This phase has no calorie target."}</div>`;
   } else {
     // No phase in view: every day here uses the default targets.
@@ -77,7 +77,7 @@ function renderNutrition(el, { dash, today, start, phases }) {
     avgCard = `<div class="card-title">Averages · default targets</div>
       <div class="mut">No phase in this window · ${tracked.length} tracked ${tracked.length === 1 ? "day" : "days"}</div>
       <div class="kv-line"><span class="big">${tracked.length ? commas(avgs.calories) : "—"}</span><span class="mut">kcal / day${defaults.calories ? ` · target ${commas(defaults.calories)}` : ""}</span></div>
-      <div class="macro-grid one-col">${macroBars(tracked.length ? avgs : {}, defaults)}</div>`;
+      ${nutrientSummary(tracked.length ? avgs : {}, defaults, undefined, { oneCol: true })}`;
   }
 
   el.innerHTML = `

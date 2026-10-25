@@ -3,7 +3,7 @@
 
 import { session, loadDash, loadWorkouts } from "../api.js";
 import { commas, esc, fmtDate, fmtMonth, kg, parseISO, phaseOn, shiftDate, shiftMonths, targetsFor, toISO } from "../util.js";
-import { macroBars } from "../charts.js";
+import { nutrientSummary } from "../charts.js";
 import { showDate } from "./today.js";
 import { nav } from "../nav.js";
 
@@ -71,7 +71,7 @@ export async function render(root) {
       <div class="detail-head"><span class="h2">${esc(fmtDate(d))}</span><span class="spacer"></span>
         ${ph ? `<span class="phase-tag" style="background:${ph.kind === "untracked" ? "var(--untracked-ink)" : esc(ph.colour)}">${esc(ph.name || "Untracked")}</span>` : ""}</div>
       ${day ? `<div class="kv-line"><span class="big">${commas(day.totals.calories || 0)}</span><span class="mut">${targets.calories ? `of ${commas(targets.calories)} kcal` : "kcal"}</span></div>
-        <div class="macro-grid one-col">${macroBars(day.totals, targets, ["protein", "carbs", "fat"])}</div>` : '<div class="mut">No food logged.</div>'}
+        ${nutrientSummary(day.totals, targets, ["protein", "carbs", "fat"], { oneCol: true })}` : '<div class="mut">No food logged.</div>'}
       <div class="kv-rows">
         <div class="row"><span class="lbl w60">Weight</span><span class="num grow">${ws.length ? ws.map((w) => kg(w.kg) + " kg").join(", ") : "—"}</span></div>
         <div class="row"><span class="lbl w60">Training</span><span class="grow">${wos.length ? wos.map((w) => `<a class="num" href="#/training/workouts/${w.id}">${esc(w.name || "Workout")}</a>`).join(", ") : '<span class="mut">—</span>'}</span></div>

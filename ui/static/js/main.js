@@ -20,7 +20,6 @@ import * as pantry from "./views/pantry.js";
 import * as phases from "./views/phases.js";
 import * as insights from "./views/insights.js";
 import * as settings from "./views/settings.js";
-import * as debug from "./views/debug.js";
 
 // Sections and their sub-pages, in nav order (desktop top bar + mobile drawer).
 const SECTIONS = [
@@ -48,7 +47,6 @@ const ROUTES = {
   "insights/weight": [insights, "Dashboard"],
   "insights/lifts": [insights, "Dashboard"],
   "settings": [settings, "Settings"],
-  "debug": [debug, "Diagnostics", "#/settings"],
 };
 
 function match(path) {
@@ -122,7 +120,7 @@ function paintShell() {
   $("settings-btn").classList.toggle("on", path === "settings");
 
   $("page-title").textContent = current.title;
-  const back = current.back && (current.params.id || ["profiles", "debug"].includes(current.params.route));
+  const back = current.back && (current.params.id || current.params.route === "profiles");
   $("back-btn").hidden = !back;
   $("menu-btn").hidden = !!back;
   if (back) $("back-btn").href = current.back;
