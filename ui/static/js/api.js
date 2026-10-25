@@ -20,12 +20,32 @@ export function rememberedProfile() {
   try { return localStorage.getItem(PROFILE_KEY); } catch (e) { return null; }
 }
 
-export async function api(path, opts = {}) {
-  const res = await fetch(path, {
+// Cloud Run scales to zero, so the first request after a quiet spell can fail
+// or time out while an instance starts. Reads retry once after a short pause;
+// writes never retry (they may already have been applied).
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+async function send(path, opts) {
+  return fetch(path, {
     ...opts,
     headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
     body: opts.body !== undefined && typeof opts.body !== "string" ? JSON.stringify(opts.body) : opts.body,
   });
+}
+
+export async function api(path, opts = {}) {
+  const isRead = !opts.method || opts.method === "GET";
+  let res;
+  try {
+    res = await send(path, opts);
+  } catch (e) {
+    if (!isRead) throw e;
+    res = null;   // network error: fall through to the retry
+  }
+  if (isRead && (res === null || RETRYABLE.has(res.status))) {
+    await new Promise((r) => setTimeout(r, 1500));
+    res = await send(path, opts);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -55,6 +75,9 @@ export function cached(key, loader) {
   }
   return cache.get(k);
 }
+
+// Drop everything (returning to the app, or a manual retry).
+export function invalidateAll() { cache.clear(); }
 
 // Invalidate by prefix, e.g. invalidate("day:", "dash") after a food entry.
 export function invalidate(...prefixes) {

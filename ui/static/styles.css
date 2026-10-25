@@ -389,7 +389,8 @@ details.more[open] > summary::before { content: "▾ "; }
 details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 
 /* ── today ───────────────────────────────────────────────────────────────── */
-.date-btn { position: relative; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
+.date-btn { position: relative; padding: 6px 10px; border-radius: 10px; cursor: pointer; min-width: 0; }
+.date-btn .num { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .date-btn:hover { background: var(--hover); }
 .date-btn .num { font-size: 15px; }
 /* The native picker sits invisibly over the label: one tap opens it. */
@@ -411,6 +412,7 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 .weight-read .num { font-size: 17px; }
 .weight-read.faded .num { color: var(--muted); }
 .pinbar { display: none; }
+.debug-bar { display: flex !important; position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bar); border-top: 1px solid var(--bar-line); }
 
 /* ── charts ──────────────────────────────────────────────────────────────── */
 .chart-box { width: 100%; min-width: 0; }
@@ -529,16 +531,23 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
   .stats-line { flex-wrap: wrap; gap: 10px 16px; }
   .search { width: 100%; flex: 1 1 100%; }
   .big { font-size: 26px; }
-  .macro-grid { min-width: 0; gap: 7px 12px; }
-  .macro .lbl { width: 34px; font-size: 9px; }
+  .macro-grid { min-width: 0; gap: 8px 16px; }
+  /* Beside the ring a phone leaves ~100px for two columns of bars, squeezing
+     each bar to nothing; give the grid its own full-width row under the ring. */
+  .summary .macro-grid { flex: 1 1 100%; }
+  .macro .lbl { width: 26px; font-size: 9px; }
   .macro .mut { width: 54px; font-size: 11px; }
   .summary { gap: 14px; }
   .summary svg { width: 72px !important; height: 72px !important; }
+  .day-head { gap: 6px; }
   .day-head .num { font-size: 14px; }
+  .date-btn { padding: 6px 4px; }
   .cal-cell { height: 44px; padding: 4px 5px; }
   .cal-cell span { font-size: 9px; }
   .set-head, .set-row { grid-template-columns: minmax(0, 1fr) 54px 58px 46px 30px; gap: 6px; }
 
+  /* The pinned bar stays fixed and the page itself scrolls, so the browser's
+     own pull-to-refresh keeps working (it only fires on the root scroller). */
   .pinbar {
     display: flex; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));

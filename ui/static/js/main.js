@@ -4,7 +4,7 @@
 // buttons work without any server routing. Each view module exports
 // `render(root, params)`; the shell owns everything around it.
 
-import { session, loadMe, rememberedProfile, rememberProfile, activeProfile, invalidate } from "./api.js";
+import { session, loadMe, rememberedProfile, rememberProfile, activeProfile, invalidate, invalidateAll } from "./api.js";
 import { $, esc } from "./util.js";
 import { nav, onBreakpointChange } from "./nav.js";
 import { applyTheme, themePref } from "./theme.js";
@@ -20,6 +20,7 @@ import * as pantry from "./views/pantry.js";
 import * as phases from "./views/phases.js";
 import * as insights from "./views/insights.js";
 import * as settings from "./views/settings.js";
+import * as debug from "./views/debug.js";
 
 // Sections and their sub-pages, in nav order (desktop top bar + mobile drawer).
 const SECTIONS = [
@@ -47,6 +48,7 @@ const ROUTES = {
   "insights/weight": [insights, "Dashboard"],
   "insights/lifts": [insights, "Dashboard"],
   "settings": [settings, "Settings"],
+  "debug": [debug, "Diagnostics", "#/settings"],
 };
 
 function match(path) {
@@ -80,6 +82,7 @@ async function route() {
   current = { view, params: { ...m.params, route: m.key, path }, title, back };
   paintShell();
   await refresh();
+  window.scrollTo(0, 0);   // each page starts at the top
 }
 
 // Re-render the current view (after a write, a profile switch, a resize across
@@ -91,9 +94,19 @@ async function refresh() {
     await current.view.render(root, current.params);
   } catch (e) {
     console.error(e);
-    root.innerHTML = `<div class="page"><div class="card"><div class="empty">Couldn't load this page: ${esc(e.message)}</div></div></div>`;
+    root.innerHTML = errorCard(`Couldn't load this page: ${esc(e.message)}`);
+    wireRetry(root, async () => { invalidateAll(); await refresh(); });
   }
   paintShell();
+}
+
+function errorCard(message) {
+  return `<div class="page"><div class="card"><div class="empty">${message}</div>
+    <div class="row-end"><button class="pill" data-retry>Retry</button></div></div></div>`;
+}
+function wireRetry(root, fn) {
+  const b = root.querySelector("[data-retry]");
+  if (b) b.onclick = () => { b.disabled = true; fn(); };
 }
 
 function paintShell() {
@@ -109,7 +122,7 @@ function paintShell() {
   $("settings-btn").classList.toggle("on", path === "settings");
 
   $("page-title").textContent = current.title;
-  const back = current.back && (current.params.id || current.params.route === "profiles");
+  const back = current.back && (current.params.id || ["profiles", "debug"].includes(current.params.route));
   $("back-btn").hidden = !back;
   $("menu-btn").hidden = !!back;
   if (back) $("back-btn").href = current.back;
@@ -176,8 +189,10 @@ async function init() {
   try {
     session.me = await loadMe();
   } catch (e) {
-    $("view").innerHTML = `<div class="page"><div class="card"><div class="empty">${
-      e.status === 403 ? "This Google account isn't linked to a profile." : "Couldn't reach the tracker: " + esc(e.message)}</div></div></div>`;
+    $("view").innerHTML = errorCard(e.status === 403
+      ? "This Google account isn't linked to a profile."
+      : "Couldn't reach the tracker: " + esc(e.message));
+    wireRetry($("view"), () => location.reload());
     return;
   }
   session.today = session.me.today;
@@ -188,6 +203,19 @@ async function init() {
   window.addEventListener("hashchange", route);
   await route();
 }
+
+// Coming back to the app after a while: reload its data, so entries logged
+// through Claude or on the other profile appear without a pull-to-refresh.
+const STALE_AFTER_MS = 30_000;
+let hiddenAt = null;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+  if (!session.me || hiddenAt === null || Date.now() - hiddenAt < STALE_AFTER_MS) return;
+  hiddenAt = null;
+  invalidateAll();
+  try { await reloadMe(); } catch (e) { /* refresh() below shows the error */ }
+  await refresh();
+});
 
 Object.assign(nav, { go, refresh, reloadMe, switchProfile });
 init();

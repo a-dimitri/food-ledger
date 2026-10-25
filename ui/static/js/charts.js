@@ -5,7 +5,7 @@
 // tinted bands, and series lines break across untracked windows rather than
 // interpolating over time that wasn't tracked.
 
-import { NUTRIENT_COLORS, MACROS, LABELS, commas, daysBetween, esc, fmtDay, fmtNutrient,
+import { NUTRIENT_COLORS, MACROS, LABELS, SHORT, commas, daysBetween, esc, fmtDay, fmtNutrient,
   phaseEnd, shiftDate } from "./util.js";
 
 // ── mounting ─────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export function macroBars(totals, targets, keys = MACROS, { compact = false } = 
     const over = target && actual > target;
     const shown = target ? `${fmtNutrient(key, actual)}/${fmtNutrient(key, target)}` : fmtNutrient(key, actual);
     return `<div class="macro">
-      <span class="lbl">${compact ? esc(key === "fiber" ? "Fib" : LABELS[key].slice(0, 4)) : LABELS[key]}</span>
+      <span class="lbl">${compact ? esc(SHORT[key] || LABELS[key]) : LABELS[key]}</span>
       <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background-color:${over ? "var(--over)" : NUTRIENT_COLORS[key]}"></div></div>
       <span class="mut"${over ? ' style="color:var(--over)"' : ""}>${shown}</span>
     </div>`;

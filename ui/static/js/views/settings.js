@@ -28,6 +28,7 @@ export async function render(root) {
         <div class="seg" data-theme></div></div>
     </div>
     <div class="mut">Name, colour and height are in <a href="#/profiles">Profiles</a> (the avatar). These targets belong to ${esc(me?.name || "this profile")}.</div>
+    <div class="mut faint"><a href="#/debug">Display diagnostics</a></div>
   </div></div>`;
 
   const paintTheme = () => {
