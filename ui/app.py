@@ -32,6 +32,7 @@ Locally, set DEV_AUTH_BYPASS=1 to skip it (DEV_PROFILE picks the landing profile
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from dataclasses import dataclass
@@ -39,7 +40,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from google.api_core import exceptions as gexc
 from pydantic import BaseModel, Field
@@ -332,18 +333,52 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ── front-end assets: cache-busted without a build step ──────────────────────
+# Without caching headers a browser guesses how long to reuse a file, and an
+# installed app ended up running a new main.js against an old cached api.js
+# (a missing export kills an ES-module app outright). So the front-end is served
+# under /assets/<fingerprint>/…, the fingerprint being a hash of every file in
+# static/: any change yields new URLs, and old and new files can never mix.
+# Imports inside the JS are relative, so they inherit the versioned prefix.
+# The entry points (/, the manifest, the service worker) are never cached.
+NO_CACHE = {"Cache-Control": "no-cache"}
+IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def _asset_version() -> str:
+    h = hashlib.sha256()
+    for path in sorted(p for p in STATIC_DIR.rglob("*") if p.is_file()):
+        h.update(path.relative_to(STATIC_DIR).as_posix().encode())
+        h.update(path.read_bytes())
+    return h.hexdigest()[:12]
+
+
+ASSET_VERSION = _asset_version()
+_INDEX_HTML = (STATIC_DIR / "index.html").read_text().replace('"/static/', f'"/assets/{ASSET_VERSION}/')
+
+
 # Front-end shell. In prod IAP gates this request; in dev it's open. The JS it
 # loads calls the /api/* endpoints, which carry their own auth check.
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    return HTMLResponse(_INDEX_HTML, headers=NO_CACHE)
+
+
+@app.get("/assets/{version}/{path:path}", include_in_schema=False)
+def asset(version: str, path: str) -> FileResponse:
+    full = (STATIC_DIR / path).resolve()
+    if not full.is_relative_to(STATIC_DIR.resolve()) or not full.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    # A page from before a deploy may still ask for its old version: serve the
+    # current file, but don't let it be cached under the old URL for long.
+    return FileResponse(full, headers=IMMUTABLE if version == ASSET_VERSION else NO_CACHE)
 
 
 # PWA plumbing. Served from the root (not /static) so the service worker's scope
 # is the whole app and the manifest carries the right content type.
 @app.get("/manifest.webmanifest", include_in_schema=False)
 def manifest() -> FileResponse:
-    return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+    return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json", headers=NO_CACHE)
 
 
 @app.get("/sw.js", include_in_schema=False)
@@ -351,11 +386,21 @@ def service_worker() -> FileResponse:
     return FileResponse(
         STATIC_DIR / "sw.js",
         media_type="text/javascript",
-        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+        headers={**NO_CACHE, "Service-Worker-Allowed": "/"},
     )
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class _RevalidatedStatic(StaticFiles):
+    """Unversioned /static (icons, and anything an old page still requests):
+    always revalidated, never reused on a guess."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", _RevalidatedStatic(directory=STATIC_DIR), name="static")
 
 
 # ── profiles ────────────────────────────────────────────────────────────────

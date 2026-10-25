@@ -6,29 +6,12 @@
 // it also avoids the "stale JS after deploy" trap. Never touches /api/* (user
 // data + auth) or cross-origin requests (e.g. the IAP -> Google login redirect).
 
-const CACHE = "ledger-v2.1";
+const CACHE = "ledger-v2.2";
+// Entry points only: the JS/CSS live under /assets/<fingerprint>/ (see
+// ui/app.py) and are cached here as they're fetched, so a deploy never mixes
+// old and new files.
 const SHELL = [
-  "/static/styles.css",
-  "/static/js/main.js",
-  "/static/js/nav.js",
-  "/static/js/api.js",
-  "/static/js/util.js",
-  "/static/js/theme.js",
-  "/static/js/sheet.js",
-  "/static/js/charts.js",
-  "/static/js/forms.js",
-  "/static/js/workout-form.js",
-  "/static/js/views/today.js",
-  "/static/js/views/history.js",
-  "/static/js/views/profiles.js",
-  "/static/js/views/workouts.js",
-  "/static/js/views/routines.js",
-  "/static/js/views/exercises.js",
-  "/static/js/views/pantry.js",
-  "/static/js/views/phases.js",
-  "/static/js/views/insights.js",
-  "/static/js/views/settings.js",
-  "/static/js/views/debug.js",
+  "/",
   "/manifest.webmanifest",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
@@ -58,7 +41,9 @@ self.addEventListener("fetch", (e) => {
   // Navigations fall back to the cached shell ("/"); assets to their own URL.
   const key = req.mode === "navigate" ? "/" : req;
   e.respondWith(
-    fetch(req)
+    // no-cache: always ask the server (a 304 is cheap) rather than let the
+    // HTTP cache serve a guessed-fresh copy.
+    fetch(req, { cache: "no-cache" })
       .then((res) => {
         // Only cache real same-origin 200s (not opaque/redirect responses).
         if (res.ok && res.type === "basic") {
