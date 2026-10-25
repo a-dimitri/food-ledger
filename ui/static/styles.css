@@ -144,7 +144,11 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--surface); }
+/* Nothing may widen the page: on Android Chrome any sideways overflow enlarges
+   the layout viewport (keeping its aspect ratio), which pushes position:fixed
+   bars below the visible screen. Root only — overflow on body too would make
+   body a scroll container and stop the sticky top bar sticking. */
+html { background: var(--surface); overflow-x: hidden; }
 body {
   margin: 0;
   min-height: 100vh;
@@ -229,14 +233,14 @@ input, select, textarea { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 .grow { flex: 1; min-width: 0; }
 .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.grid-today { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
-.grid-detail { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
-.grid-detail.list-first { grid-template-columns: 1fr 1.25fr; }
-.grid-detail.wide-first { grid-template-columns: 1.6fr 1fr; }
+.grid-today { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.grid-detail { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.grid-detail.list-first { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+.grid-detail.wide-first { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.grid-2.wide-first { grid-template-columns: 1.5fr 1fr; }
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.grid-2.wide-first { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .stats-line { display: flex; align-items: center; gap: 18px; min-height: 40px; }
 .stats-line.wrap { flex-wrap: wrap; gap: 10px; }
@@ -397,8 +401,8 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 .date-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .summary { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .summary-num { flex: none; min-width: 110px; }
-.macro-grid { flex: 1; min-width: 280px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px 20px; }
-.macro-grid.one-col { grid-template-columns: 1fr; min-width: 0; }
+.macro-grid { flex: 1; min-width: 280px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 20px; }
+.macro-grid.one-col { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .macro { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .macro .lbl { width: 48px; flex: none; }
 .macro .mut { width: 64px; flex: none; text-align: right; white-space: nowrap; font-size: 12px; }
@@ -428,7 +432,7 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 .legend .dot { margin-right: 5px; }
 
 /* ── history calendar ────────────────────────────────────────────────────── */
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .cal-dow { text-align: center; margin-bottom: 2px; }
 .cal-cell {
   height: 52px; border-radius: 9px; padding: 5px 7px; text-align: left;
@@ -523,8 +527,8 @@ details.more[open] { display: flex; flex-direction: column; gap: 14px; }
 
   .page { padding: 12px 12px calc(28px + env(safe-area-inset-bottom)); gap: 12px; }
   .page.today { padding-bottom: calc(var(--pinbar-h) + 24px + env(safe-area-inset-bottom)); }
-  .grid-today, .grid-detail, .grid-detail.list-first, .grid-detail.wide-first { grid-template-columns: 1fr; gap: 12px; }
-  .grid-2.wide-first { grid-template-columns: 1fr 1fr; }
+  .grid-today, .grid-detail, .grid-detail.list-first, .grid-detail.wide-first { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .grid-2.wide-first { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .card { padding: 14px; border-radius: 14px; }
   .card.list { padding: 4px 12px; }
   .stack { gap: 12px; }

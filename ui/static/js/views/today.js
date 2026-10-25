@@ -53,8 +53,7 @@ export async function render(root) {
     </div>
     <div class="grid-today">
       <div class="card">
-        <div class="card-title">Food${day.entries.length ? ` · ${day.entries.length}` : ""}
-          ${phase && !untracked ? `<span class="phase-tag" style="background:${esc(phase.colour || "var(--terracotta)")}">${esc(phase.name)}</span>` : ""}
+        <div class="card-title">Food
           <span class="spacer"></span>
           ${date === session.today && day.entries.length && !untracked
             ? `<button class="chip${day.completed ? " active" : ""}" data-complete title="Count today in averages">${day.completed ? "✓ Day complete" : "Mark day complete"}</button>` : ""}</div>
