@@ -62,9 +62,13 @@ Phases: a phase is a date window with its own daily targets and weight goal
 no targets and food can't be logged in it. Days outside both use the profile's
 default targets. Windows never overlap.
 
-Workouts: each exercise in a workout records only its top set (kg × reps; kg may
-be omitted for bodyweight). Exercises are referred to by catalogue name or id
-(list_exercises); add new ones with add_exercise."""
+Workouts: each exercise in a workout records only its top set (kg × reps).
+Exercises are referred to by catalogue name or id (list_exercises); add new ones
+with add_exercise. For bodyweight exercises (equipment "bodyweight", e.g.
+pull-ups, dips) `kg` is the ADDED load: omit it for bodyweight only, positive for a
+belt/vest, negative for assistance (band or machine). Their 1RM estimates are
+quoted as added kg, using the bodyweight recorded with the workout (taken from the
+latest weigh-in unless you pass bodyweight_kg)."""
 
 # Auth is enabled when the OAuth/Google config is present (prod); without it the
 # server runs unauthenticated for local tool testing, as MCP_DEV_PROFILE.
@@ -524,11 +528,14 @@ def add_exercise(
     name: str,
     muscle_group: Literal[workout_rules.MUSCLE_GROUPS],  # type: ignore[valid-type]
     equipment: Literal[workout_rules.EQUIPMENT],  # type: ignore[valid-type]
+    bodyweight_factor: Annotated[Optional[float], Field(gt=0, le=1, description=(
+        "Bodyweight exercises only: share of bodyweight lifted. 1.0 (default) for "
+        "pull-ups, chin-ups and dips; about 0.65 for push-ups, 0.5 for inverted rows."))] = None,
 ) -> dict[str, Any]:
     """Add an exercise to the shared catalogue. Check list_exercises first so the
     same exercise isn't added twice under a slightly different name."""
-    return {"id": store().add_exercise({"name": name, "muscle_group": muscle_group,
-                                        "equipment": equipment}), "status": "added"}
+    return {"id": store().add_exercise({"name": name, "muscle_group": muscle_group, "equipment": equipment,
+                                        "bodyweight_factor": bodyweight_factor}), "status": "added"}
 
 
 def _find_exercise(ref: str, catalogue_: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -541,8 +548,9 @@ def _find_exercise(ref: str, catalogue_: list[dict[str, Any]]) -> Optional[dict[
 class TopSet(BaseModel):
     exercise: str = Field(description="Catalogue exercise name (case-insensitive) or id.")
     reps: int = Field(ge=1, description="Reps in the top set.")
-    kg: Optional[float] = Field(default=None, ge=0,
-                                description="Weight of the top set; omit for bodyweight.")
+    kg: Optional[float] = Field(default=None, description=(
+        "Weight of the top set. For bodyweight exercises, the ADDED load: omit for "
+        "bodyweight only, negative for assisted reps."))
 
 
 def _resolve_sets(sets: list[TopSet]) -> list[dict[str, Any]]:
@@ -568,11 +576,14 @@ def log_workout(
     name: Optional[str] = None,
     date: Optional[str] = None,
     notes: Optional[str] = None,
+    bodyweight_kg: Annotated[Optional[float], Field(gt=0, description=(
+        "Bodyweight for this session; only matters for bodyweight exercises. "
+        "Defaults to the latest weigh-in."))] = None,
 ) -> dict[str, Any]:
     """Log a workout: one top set per exercise, in the order performed. `name` is
     the session name (e.g. 'Push day'); `date` defaults to today (Sydney)."""
     date = date or sydney_today()
-    data = _drop_none({"date": date, "name": name, "notes": notes})
+    data = _drop_none({"date": date, "name": name, "notes": notes, "bodyweight_kg": bodyweight_kg})
     data["exercises"] = _resolve_sets(sets)
     return {"id": _profile().add_workout(data), "status": "logged", "date": date}
 
@@ -584,10 +595,12 @@ def update_workout(
     name: Optional[str] = None,
     date: Optional[str] = None,
     notes: Optional[str] = None,
+    bodyweight_kg: Annotated[Optional[float], Field(gt=0, description=(
+        "Correct the bodyweight recorded for this session."))] = None,
 ) -> dict[str, Any]:
     """Edit a workout (id from list_workouts). Passing `sets` replaces the whole
     exercise list, so include every exercise, not just the changed one."""
-    data = _drop_none({"name": name, "date": date, "notes": notes})
+    data = _drop_none({"name": name, "date": date, "notes": notes, "bodyweight_kg": bodyweight_kg})
     if sets is not None:
         data["exercises"] = _resolve_sets(sets)
     if not data:
@@ -614,12 +627,14 @@ def list_workouts(since: Optional[str] = None) -> dict[str, Any]:
 def get_exercise_history(exercise: str) -> dict[str, Any]:
     """Every top set logged for one exercise (catalogue name or id), oldest first,
     with estimated 1RM (Epley), the best set, and the kg change since the previous
-    session and since the active phase began."""
+    session and since the active phase began. For bodyweight exercises `kg` and
+    `e1rm` are added load (e1rm_total includes the bodyweight lifted); `approx`
+    marks sets above 12 reps, where the estimate is rough."""
     ex = _find_exercise(exercise, store().list_exercises())
     if ex is None:
         return {"status": "error", "detail": f"no exercise matching {exercise!r}; see list_exercises"}
     ps = _profile()
-    history = workout_rules.exercise_history(ps.workouts_with_exercise(ex["id"]), ex["id"])
+    history = workout_rules.exercise_history(ps.workouts_with_exercise(ex["id"]), ex["id"], ps.list_weights())
     active = phase_rules.phase_on(ps.list_phases(), sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
     return {

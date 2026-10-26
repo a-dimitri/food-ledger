@@ -3,12 +3,12 @@
 // set, estimated 1RM, sessions, change this phase.
 
 import { session, loadDash, loadExercises, loadHistory, loadWorkouts } from "../api.js";
-import { MUSCLE_GROUPS, cap, daysBetween, esc, exerciseHistory, fmtDay, kg, phaseOn, setLabel, signed } from "../util.js";
+import { MUSCLE_GROUPS, cap, daysBetween, e1rmLabel, esc, exerciseHistory, fmtDay, phaseOn, setLabel, signed } from "../util.js";
 import { mount, rangeStart, timeChart } from "../charts.js";
 import { openExerciseForm } from "../workout-form.js";
 import { isMobile, nav } from "../nav.js";
 
-const view = { query: "", group: "all", range: "6m", metric: "kg" };
+const view = { query: "", group: "all", range: "6m", metric: null };   // metric null: the exercise's default
 
 export async function render(root, params) {
   const [catalogue, workouts, dash] = await Promise.all([loadExercises(), loadWorkouts(), loadDash()]);
@@ -52,31 +52,35 @@ async function renderDetail(el, ex, dash) {
   const today = session.today;
   const start = rangeStart(today, view.range);
   const shown = hist.filter((r) => r.date >= start);
-  const value = (r) => (view.metric === "e1rm" ? r.e1rm : r.kg);
+  // Bodyweight lifts chart the added-load 1RM by default, with the top set's
+  // added kg and the total (bodyweight included) as alternatives.
+  const bw = ex.equipment === "bodyweight";
+  const metrics = bw ? [["e1rm", "Est. 1RM"], ["kg", "Added"], ["total", "Total"]] : [["kg", "Top set"], ["e1rm", "Est. 1RM"]];
+  const metric = metrics.some(([m]) => m === view.metric) ? view.metric : metrics[0][0];
+  const value = (r) => (metric === "e1rm" ? r.e1rm : metric === "total" ? r.e1rm_total : r.kg);
 
   el.innerHTML = `<div class="detail-head"><div class="grow"><div class="h2">${esc(ex.name)}</div>
       <div class="mut">${esc(cap(ex.equipment))} · ${esc(ex.muscle_group)}</div></div>
       <button class="ic" data-edit aria-label="Edit exercise">✎</button></div>
     <div class="seg">${["3m", "6m", "1y"].map((r) => `<button class="chip${view.range === r ? " active" : ""}" data-range="${r}">${r}</button>`).join("")}
       <span class="spacer"></span>
-      <button class="chip${view.metric === "kg" ? " active" : ""}" data-metric="kg">Top set</button>
-      <button class="chip${view.metric === "e1rm" ? " active" : ""}" data-metric="e1rm">Est. 1RM</button></div>
+      ${metrics.map(([m, label]) => `<button class="chip${metric === m ? " active" : ""}" data-metric="${m}">${label}</button>`).join("")}</div>
     <div class="chart-box" data-chart></div>
     <div class="kpi-grid">
       <div class="kpi"><div class="lbl">Best set</div><div class="v">${esc(setLabel(data.best))}</div></div>
-      <div class="kpi"><div class="lbl">Est. 1RM</div><div class="v">${data.best?.e1rm != null ? kg(data.best.e1rm) : "—"}</div></div>
+      <div class="kpi"><div class="lbl">Est. 1RM${bw ? " (added)" : ""}</div><div class="v">${esc(e1rmLabel(data.best))}</div></div>
       <div class="kpi"><div class="lbl">Sessions</div><div class="v">${data.sessions}</div></div>
       <div class="kpi"><div class="lbl">This phase</div><div class="v ${data.change_this_phase > 0 ? "gr" : ""}">${data.change_this_phase != null ? signed(data.change_this_phase) + " kg" : "—"}</div></div>
     </div>
     <div class="list">${[...hist].reverse().slice(0, 12).map((r) => `<a class="row row-btn" href="#/training/workouts/${r.workout_id}">
         <span class="mut w60">${esc(fmtDay(r.date))}</span><span class="num grow">${esc(setLabel(r))}</span>
-        <span class="mut">${r.e1rm != null ? "e1RM " + kg(r.e1rm) : ""}</span></a>`).join("") || '<div class="empty">Not logged by this profile yet.</div>'}</div>`;
+        <span class="mut">${r.e1rm != null ? "e1RM " + esc(e1rmLabel(r)) : ""}</span></a>`).join("") || '<div class="empty">Not logged by this profile yet.</div>'}</div>`;
 
   mount(el.querySelector("[data-chart]"), timeChart({
     start, end: today, phases, height: 180, label: `${ex.name} history`,
     empty: "No sessions in this range.",
     series: [{ color: "var(--ink)", width: 2.2, dots: true, points: shown.map((r) => ({ date: r.date, v: value(r) })) }],
-    yFmt: (v) => String(Math.round(v)),
+    yFmt: (v) => (bw && metric !== "total" && v > 0 ? "+" : "") + Math.round(v),
     // Sessions are sparse, so snap to the nearest one rather than the exact day.
     readout: (d) => {
       const r = shown.reduce((best, x) =>
@@ -84,7 +88,8 @@ async function renderDetail(el, ex, dash) {
       if (!r) return '<span class="placeholder">no sessions</span>';
       const ph = phaseOn(phases, r.date);
       return `<span>${esc(fmtDay(r.date))}${ph?.kind === "phase" ? " · " + esc(ph.name) : ""}</span><b>${esc(setLabel(r))}</b>${
-        r.e1rm != null ? `<span>e1RM ${kg(r.e1rm)}</span>` : ""}`;
+        r.e1rm != null ? `<span>e1RM ${esc(e1rmLabel(r))}${bw ? ` · total ${esc(e1rmLabel(r, { total: true }))}` : ""}</span>` : ""}${
+        bw && r.bodyweight != null ? `<span>at ${r.bodyweight} kg</span>` : ""}`;
     },
   }));
   el.querySelectorAll("[data-range]").forEach((b) => { b.onclick = () => { view.range = b.dataset.range; renderDetail(el, ex, dash); }; });

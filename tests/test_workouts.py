@@ -64,6 +64,68 @@ class TestHistory(unittest.TestCase):
         self.assertIsNone(workouts.kg_change(hist[:1]))
 
 
+PULL = "pullup"
+
+
+def bw_set(kg, reps, factor=1.0):
+    return {"exercise_id": PULL, "name": "Pull-up", "kg": kg, "reps": reps, "bw_factor": factor}
+
+
+class TestBodyweight(unittest.TestCase):
+    def test_weighted_estimate_is_quoted_as_added_load(self):
+        # 78 kg + 10 kg for 8: total 88 × (1 + 8/30) = 111.5, i.e. +33.5 kg for one.
+        est = workouts.set_estimate(bw_set(10, 8), bodyweight=78)
+        self.assertEqual(est["e1rm_total"], 111.5)
+        self.assertEqual(est["e1rm"], 33.5)
+
+    def test_bodyweight_only_and_assisted(self):
+        self.assertEqual(workouts.set_estimate(bw_set(None, 12), 78)["e1rm"], 31.2)    # 78 × 1.4
+        self.assertEqual(workouts.set_estimate(bw_set(-20, 5), 78)["e1rm"], -10.3)    # 58 × 1.167 − 78
+
+    def test_partial_bodyweight_factor(self):
+        # Push-ups lift ~65%: 0.65 × 80 = 52 kg for 20 reps.
+        est = workouts.set_estimate(bw_set(None, 20, factor=0.65), 80)
+        self.assertEqual(est["e1rm_total"], round(52 * (1 + 20 / 30), 1))
+
+    def test_no_bodyweight_means_no_estimate(self):
+        self.assertEqual(workouts.set_estimate(bw_set(10, 8), None), {"e1rm": None, "e1rm_total": None})
+
+    def test_loaded_lifts_are_unchanged(self):
+        est = workouts.set_estimate({"exercise_id": BENCH, "kg": 85, "reps": 5}, bodyweight=78)
+        self.assertEqual(est, {"e1rm": 99.2, "e1rm_total": 99.2})
+
+    def test_validation(self):
+        ok = {"date": "2026-10-26", "bodyweight_kg": 78, "exercises": [bw_set(-20, 5)]}
+        workouts.normalise(ok)                                           # assisted is fine
+        with self.assertRaises(ValueError):                              # but not for a loaded lift
+            workouts.normalise({"date": "2026-10-26", "exercises": [{"exercise_id": BENCH, "kg": -5, "reps": 5}]})
+        with self.assertRaises(ValueError):                              # more assistance than bodyweight
+            workouts.normalise({**ok, "exercises": [bw_set(-80, 5)]})
+        with self.assertRaises(ValueError):
+            workouts.normalise({**ok, "bodyweight_kg": 0})
+
+    def test_bodyweight_on(self):
+        ws = [{"datetime": "2026-10-20T07:00", "kg": 79.0}, {"datetime": "2026-10-24T07:00", "kg": 78.4}]
+        self.assertEqual(workouts.bodyweight_on(ws, "2026-10-25"), 78.4)   # latest on/before
+        self.assertEqual(workouts.bodyweight_on(ws, "2026-10-22"), 79.0)
+        self.assertEqual(workouts.bodyweight_on(ws, "2026-10-01"), 79.0)   # none before: first after
+        self.assertIsNone(workouts.bodyweight_on([], "2026-10-01"))
+
+    def test_history_uses_snapshot_then_weighins(self):
+        snap = {"id": "a", "date": "2026-10-20", "bodyweight_kg": 80, "exercises": [bw_set(10, 8)]}
+        old = {"id": "b", "date": "2026-10-24", "exercises": [bw_set(12.5, 8)]}     # saved before snapshots
+        ws = [{"datetime": "2026-10-23T07:00", "kg": 78}]
+        hist = workouts.exercise_history([snap, old], PULL, ws)
+        self.assertEqual([r["bodyweight"] for r in hist], [80, 78])
+        self.assertEqual(workouts.kg_change(hist), 2.5)                     # change in added load
+
+    def test_high_rep_estimates_are_flagged(self):
+        w = {"date": "2026-10-20", "bodyweight_kg": 78, "exercises": [bw_set(None, 15)]}
+        hist = workouts.exercise_history([w], PULL)
+        self.assertTrue(hist[0]["approx"])
+        self.assertEqual(hist[0]["kg"], 0.0)                               # bodyweight only = +0
+
+
 class TestWeekly(unittest.TestCase):
     def test_counts_keyed_by_monday(self):
         counts = workouts.weekly_counts(LOG + [w("2026-10-25", (BENCH, 80, 8))])  # a Sunday

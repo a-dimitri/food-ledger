@@ -3,7 +3,7 @@
 // Desktop shows both side by side; mobile shows the list, then the detail page.
 
 import { api, p, session, invalidate, loadDash, loadWorkouts } from "../api.js";
-import { esc, fmtDate, fmtMonth, phaseOn, previousSet, setLabel, shiftDate, weekStart } from "../util.js";
+import { plural, esc, fmtDate, fmtMonth, isBodyweight, phaseOn, previousSet, round2, setLabel, shiftDate, weekStart } from "../util.js";
 import { openSheet, closeSheet, formError, busy, toast } from "../sheet.js";
 import { openWorkoutForm } from "../workout-form.js";
 import { isMobile, nav } from "../nav.js";
@@ -37,7 +37,7 @@ export async function render(root, params) {
       out += `<a class="row row-btn${w.id === selectedId && !isMobile() ? " sel" : ""}" href="#/training/workouts/${w.id}">
         <span class="dot" style="background:${ph?.kind === "phase" ? esc(ph.colour) : "var(--line-strong)"}"></span>
         <span class="grow"><span class="num">${esc(w.name || "Workout")}</span>
-          <span class="mut sub">${esc(fmtDate(w.date))} · ${(w.exercises || []).length} exercises</span></span>
+          <span class="mut sub">${esc(fmtDate(w.date))} · ${plural((w.exercises || []).length, "exercise")}</span></span>
         <span class="mut">›</span></a>`;
     }
     return out;
@@ -46,17 +46,20 @@ export async function render(root, params) {
   const detailHtml = (w) => {
     if (!w) return '<div class="empty">Select a workout.</div>';
     const ph = phaseOn(phases, w.date);
-    const rows = (w.exercises || []).map((ex) => {
+    // Change in load since the exercise's previous session (added kg for
+    // bodyweight lifts, where bodyweight only counts as +0).
+    const deltaOf = (ex) => {
       const prev = previousSet(workouts, ex.exercise_id, w.date);
-      const delta = prev && prev.kg != null && ex.kg != null ? ex.kg - prev.kg : null;
+      const cur = isBodyweight(ex) ? (ex.kg ?? 0) : ex.kg;
+      return prev && prev.kg != null && cur != null ? round2(cur - prev.kg) : null;
+    };
+    const rows = (w.exercises || []).map((ex) => {
+      const delta = deltaOf(ex);
       const chip = delta ? `<span class="chip ${delta > 0 ? "up" : "down"}">${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)}</span>` : "";
       return `<a class="row row-btn" href="#/training/exercises/${ex.exercise_id}">
         <span class="num grow">${esc(ex.name)}</span><span class="mut">${esc(setLabel(ex))}</span>${chip}</a>`;
     }).join("");
-    const improved = (w.exercises || []).filter((ex) => {
-      const prev = previousSet(workouts, ex.exercise_id, w.date);
-      return prev && prev.kg != null && ex.kg != null && ex.kg > prev.kg;
-    }).length;
+    const improved = (w.exercises || []).filter((ex) => deltaOf(ex) > 0).length;
     return `<div class="detail-head"><div class="grow"><div class="h2">${esc(w.name || "Workout")}</div>
         <div class="mut">${esc(fmtDate(w.date))}${ph?.kind === "phase" ? " · " + esc(ph.name) : ""}</div></div></div>
       <div class="detail-actions"><button class="pill" data-edit>Edit</button><button class="pill" data-routine>Save as routine</button>

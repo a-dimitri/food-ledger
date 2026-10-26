@@ -31,6 +31,7 @@ export function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 export const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export const round2 = (x) => Math.round(x * 100) / 100;
 export const commas = (n) => Math.round(n).toLocaleString("en-AU");
 export function kg(n) { return n == null ? "—" : (Math.round(n * 10) / 10).toFixed(1); }
@@ -92,18 +93,47 @@ export function phaseLabel(p, date) {
 }
 
 // ── workouts (client mirror of core.workouts) ────────────────────────────────
+// Bodyweight exercises carry `bw_factor` (share of bodyweight lifted); for them
+// `kg` is the ADDED load (empty = bodyweight only, negative = assisted), and 1RM
+// estimates are quoted as added kg. See core/workouts.py.
+export const RELIABLE_REPS = 12;
+export const isBodyweight = (ex) => ex?.bw_factor != null;
+
 export function epley(kgv, reps) {
   if (kgv == null) return null;
   return reps === 1 ? kgv : Math.round(kgv * (1 + reps / 30) * 10) / 10;
 }
+
+// {e1rm, e1rm_total} for one top set; e1rm is added kg for bodyweight lifts.
+export function setEstimate(ex, bodyweight) {
+  if (!isBodyweight(ex)) { const e = epley(ex.kg ?? null, ex.reps); return { e1rm: e, e1rm_total: e }; }
+  if (bodyweight == null) return { e1rm: null, e1rm_total: null };
+  const lifted = ex.bw_factor * bodyweight;
+  const total = epley(lifted + (ex.kg || 0), ex.reps);
+  return { e1rm: Math.round((total - lifted) * 10) / 10, e1rm_total: total };
+}
+
+// Last weigh-in on/before `date`, else the first after.
+export function bodyweightOn(weights, date) {
+  const ws = [...(weights || [])].sort((a, b) => (a.datetime < b.datetime ? -1 : 1));
+  const before = ws.filter((w) => w.datetime.slice(0, 10) <= date);
+  if (before.length) return before[before.length - 1].kg;
+  return ws.length ? ws[0].kg : null;
+}
+
 // Every top set for one exercise across `workouts`, oldest first.
-export function exerciseHistory(workouts, exerciseId) {
+export function exerciseHistory(workouts, exerciseId, weights = []) {
   const rows = [];
   for (const w of workouts) {
     for (const ex of w.exercises || []) {
-      if (ex.exercise_id === exerciseId) {
-        rows.push({ date: w.date, workout: w, kg: ex.kg ?? null, reps: ex.reps, e1rm: epley(ex.kg ?? null, ex.reps) });
-      }
+      if (ex.exercise_id !== exerciseId) continue;
+      const bw = isBodyweight(ex);
+      const bodyweight = bw ? (w.bodyweight_kg ?? bodyweightOn(weights, w.date)) : null;
+      rows.push({
+        date: w.date, workout: w, reps: ex.reps, bw_factor: ex.bw_factor ?? null, bodyweight,
+        kg: bw ? (ex.kg ?? 0) : (ex.kg ?? null),
+        ...setEstimate(ex, bodyweight), approx: ex.reps > RELIABLE_REPS,
+      });
     }
   }
   return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -113,7 +143,20 @@ export function previousSet(workouts, exerciseId, beforeDate) {
   const hist = exerciseHistory(workouts, exerciseId).filter((r) => r.date < beforeDate);
   return hist.length ? hist[hist.length - 1] : null;
 }
-export const setLabel = (s) => (s ? `${kgShort(s.kg)} × ${s.reps}` : "—");
+// "80 × 8", or for bodyweight lifts "BW × 12" / "BW+10 × 8" / "BW−20 × 5".
+export function loadLabel(s) {
+  if (!isBodyweight(s)) return kgShort(s.kg ?? null);
+  const added = s.kg || 0;
+  return added > 0 ? `BW+${round2(added)}` : added < 0 ? `BW−${round2(-added)}` : "BW";
+}
+export const setLabel = (s) => (s ? `${loadLabel(s)} × ${s.reps}` : "—");
+// An estimated 1RM for display: "+33.5" for bodyweight (added) lifts, "≈" when rough.
+export function e1rmLabel(r, { total = false } = {}) {
+  const v = total ? r?.e1rm_total : r?.e1rm;
+  if (v == null) return "—";
+  const shown = isBodyweight(r) && !total ? (v >= 0 ? `+${kg(v)}` : `−${kg(-v)}`) : kg(v);
+  return (r.approx ? "≈" : "") + shown;
+}
 
 // Debounce for search boxes.
 export function debounce(fn, ms = 150) {

@@ -4,7 +4,7 @@
 
 import { api, p, session, invalidate, loadDay, loadDash, loadWorkouts } from "../api.js";
 import { toast } from "../sheet.js";
-import { commas, esc, fmtDate, fmtDay, kg, phaseOn, shiftDate, signed } from "../util.js";
+import { plural, commas, esc, fmtDate, fmtDay, kg, phaseOn, shiftDate, signed } from "../util.js";
 import { nutrientSummary, ring } from "../charts.js";
 import { openFoodForm, openWeighIn } from "../forms.js";
 import { openWorkoutForm } from "../workout-form.js";
@@ -79,7 +79,7 @@ export async function render(root) {
         <div class="card">
           <div class="card-title">Training</div>
           ${day.workouts.length ? day.workouts.map((w) => `<a class="row row-btn" href="#/training/workouts/${w.id}">
-              <span class="grow"><span class="num">${esc(w.name || "Workout")}</span><span class="mut sub">${(w.exercises || []).length} exercises</span></span><span class="mut">›</span></a>`).join("")
+              <span class="grow"><span class="num">${esc(w.name || "Workout")}</span><span class="mut sub">${plural((w.exercises || []).length, "exercise")}</span></span><span class="mut">›</span></a>`).join("")
             : `<div class="mut strong">Nothing logged</div>${lastWorkout ? `<div class="mut">Last: ${esc(lastWorkout.name || "Workout")} · ${esc(fmtDate(lastWorkout.date))}</div>` : ""}`}
         </div>
       </div>

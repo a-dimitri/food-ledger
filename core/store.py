@@ -6,7 +6,8 @@ truth. Both the web UI and the MCP server use this.
 Shared (top-level) collections — `Store`:
     profiles/<id>        {name, colour, height_cm, default_targets{}, emails[]}
     foods/<auto-id>      the shared pantry (see core.catalogue)
-    exercises/<auto-id>  the shared exercise catalogue {name, muscle_group, equipment}
+    exercises/<auto-id>  the shared exercise catalogue
+                         {name, muscle_group, equipment, bodyweight_factor?}
 
 Per-profile subcollections under profiles/<id>/ — `ProfileStore`:
     entries/<auto-id>    one food entry (see core.compute for the field shape)
@@ -168,13 +169,31 @@ class Store:
         snap = self.db.collection(EXERCISES_COLLECTION).document(exercise_id).get()
         return _with_id(snap) if snap.exists else None
 
+    @staticmethod
+    def _with_factor(exercise: dict[str, Any]) -> dict[str, Any]:
+        """Bodyweight exercises carry `bodyweight_factor` (share of bodyweight
+        lifted; 1.0 unless given); other equipment never does."""
+        if exercise.get("equipment") == "bodyweight":
+            f = exercise.get("bodyweight_factor")
+            if f is None:
+                f = 1.0
+            if not (0 < f <= 1):
+                raise InvalidError("bodyweight_factor must be more than 0 and at most 1")
+            return {**exercise, "bodyweight_factor": float(f)}
+        return {**exercise, "bodyweight_factor": None}
+
     def add_exercise(self, data: dict[str, Any]) -> str:
         ref = self.db.collection(EXERCISES_COLLECTION).document()
-        ref.set(_stamped(data, created=True))
+        ref.set(_stamped(self._with_factor(data), created=True))
         return ref.id
 
     def update_exercise(self, exercise_id: str, data: dict[str, Any]) -> None:
-        self.db.collection(EXERCISES_COLLECTION).document(exercise_id).update(_stamped(data, created=False))
+        ref = self.db.collection(EXERCISES_COLLECTION).document(exercise_id)
+        snap = ref.get()
+        if not snap.exists:
+            raise NotFoundError(f"exercise {exercise_id} not found")
+        merged = self._with_factor({**(snap.to_dict() or {}), **data})
+        ref.update(_stamped({**data, "bodyweight_factor": merged["bodyweight_factor"]}, created=False))
 
     def delete_exercise(self, exercise_id: str) -> None:
         """Past workouts keep their snapshot of the name, so this is safe."""
@@ -380,9 +399,36 @@ class ProfileStore:
         snap = self._col(WORKOUTS_COLLECTION).document(workout_id).get()
         return _with_id(snap) if snap.exists else None
 
+    def _snapshot_bodyweight(self, workout: dict[str, Any]) -> dict[str, Any]:
+        """Stamp each bodyweight exercise with its catalogue `bw_factor`, and the
+        workout with the bodyweight it was done at (if the caller didn't give
+        one): the latest weigh-in on/before its date, else the first after.
+        Done at save so later catalogue edits or weigh-ins never rewrite a past
+        session's estimates. A row whose exercise has left the catalogue keeps
+        the factor it already carries."""
+        rows = workout.get("exercises") or []
+        ids = list(dict.fromkeys(r["exercise_id"] for r in rows if r.get("exercise_id")))
+        refs = [self.db.collection(EXERCISES_COLLECTION).document(i) for i in ids]
+        catalogue = {d.id: (d.to_dict() or {}) for d in self.db.get_all(refs) if d.exists} if refs else {}
+        out = []
+        for r in rows:
+            r = dict(r)
+            doc = catalogue.get(r.get("exercise_id"))
+            if doc is not None:
+                r.pop("bw_factor", None)
+                if doc.get("equipment") == "bodyweight":
+                    r["bw_factor"] = float(doc.get("bodyweight_factor") or 1.0)
+            out.append(r)
+        workout = {**workout, "exercises": out}
+        if any(workout_rules.is_bodyweight(r) for r in out) and not workout.get("bodyweight_kg") and workout.get("date"):
+            bw = workout_rules.bodyweight_on(self.list_weights(), workout["date"])
+            if bw is not None:
+                workout["bodyweight_kg"] = bw
+        return workout
+
     def add_workout(self, data: dict[str, Any]) -> str:
         ref = self._col(WORKOUTS_COLLECTION).document()
-        ref.set(_stamped(_normalise_workout(data), created=True))
+        ref.set(_stamped(_normalise_workout(self._snapshot_bodyweight(data)), created=True))
         return ref.id
 
     def update_workout(self, workout_id: str, data: dict[str, Any]) -> None:
@@ -390,8 +436,8 @@ class ProfileStore:
         snap = ref.get()
         if not snap.exists:
             raise NotFoundError(f"workout {workout_id} not found")
-        merged = _normalise_workout({**(snap.to_dict() or {}), **data})
-        changed = {k: merged[k] for k in (*data, "exercise_ids") if k in merged}
+        merged = _normalise_workout(self._snapshot_bodyweight({**(snap.to_dict() or {}), **data}))
+        changed = {k: merged[k] for k in (*data, "exercises", "exercise_ids", "bodyweight_kg") if k in merged}
         ref.update(_stamped(changed, created=False))
 
     def delete_workout(self, workout_id: str) -> None:

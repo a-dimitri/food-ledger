@@ -274,23 +274,32 @@ class ExerciseIn(BaseModel):
     name: str
     muscle_group: Literal[workout_rules.MUSCLE_GROUPS]  # type: ignore[valid-type]
     equipment: Literal[workout_rules.EQUIPMENT]  # type: ignore[valid-type]
+    # Share of bodyweight lifted (bodyweight equipment only; 1.0 if omitted).
+    bodyweight_factor: Optional[float] = Field(default=None, gt=0, le=1)
 
 
 class ExercisePatch(BaseModel):
     name: Optional[str] = None
     muscle_group: Optional[Literal[workout_rules.MUSCLE_GROUPS]] = None  # type: ignore[valid-type]
     equipment: Optional[Literal[workout_rules.EQUIPMENT]] = None  # type: ignore[valid-type]
+    bodyweight_factor: Optional[float] = Field(default=None, gt=0, le=1)
 
 
 class TopSetIn(BaseModel):
     exercise_id: str
     name: str                            # snapshot of the catalogue name
-    kg: Optional[float] = Field(default=None, ge=0)
+    # Bodyweight exercises: the *added* load (negative = assisted). The store
+    # validates the sign against the exercise type.
+    kg: Optional[float] = None
     reps: int = Field(ge=1)
+    # Set by the store from the catalogue; echoed back on edit so a row whose
+    # exercise has since left the catalogue keeps its factor.
+    bw_factor: Optional[float] = Field(default=None, gt=0, le=1)
 
 
 class WorkoutIn(BaseModel):
     date: str
+    bodyweight_kg: Optional[float] = Field(default=None, gt=0)   # filled from weigh-ins if omitted
     name: Optional[str] = None
     routine_id: Optional[str] = None
     notes: Optional[str] = None
@@ -299,6 +308,7 @@ class WorkoutIn(BaseModel):
 
 class WorkoutPatch(BaseModel):
     date: Optional[str] = None
+    bodyweight_kg: Optional[float] = Field(default=None, gt=0)
     name: Optional[str] = None
     routine_id: Optional[str] = None
     notes: Optional[str] = None
@@ -665,7 +675,7 @@ def remove_workout(workout_id: str, ps: ProfileStore = Depends(profile_store)) -
 
 @app.get("/api/p/{profile_id}/exercises/{exercise_id}/history")
 def get_exercise_history(exercise_id: str, ps: ProfileStore = Depends(profile_store)) -> dict[str, Any]:
-    history = workout_rules.exercise_history(ps.workouts_with_exercise(exercise_id), exercise_id)
+    history = workout_rules.exercise_history(ps.workouts_with_exercise(exercise_id), exercise_id, ps.list_weights())
     active = phase_rules.phase_on(ps.list_phases(), sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
     return {
@@ -682,6 +692,7 @@ def get_lifts(since: Optional[str] = None, ps: ProfileStore = Depends(profile_st
     """Insights › Lifts: workouts per week, and each exercise's latest top set
     with its change since the active phase began."""
     workouts = ps.list_workouts(since=since)
+    weights = ps.list_weights()
     phases = ps.list_phases()
     active = phase_rules.phase_on(phases, sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
@@ -691,7 +702,7 @@ def get_lifts(since: Optional[str] = None, ps: ProfileStore = Depends(profile_st
             names.setdefault(ex["exercise_id"], ex.get("name"))
     lifts = []
     for exercise_id, name in names.items():
-        history = workout_rules.exercise_history(workouts, exercise_id)
+        history = workout_rules.exercise_history(workouts, exercise_id, weights)
         latest = history[-1]
         lifts.append({
             "exercise_id": exercise_id, "name": name, "latest": latest,
