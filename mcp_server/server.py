@@ -23,6 +23,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
 
 from core import catalogue, compute, phases as phase_rules, workouts as workout_rules
+from core.nutrients import NUTRIENT_KEYS
 from core.store import ProfileStore, Store, get_client
 from core.timeutils import sydney_now, sydney_today
 
@@ -52,8 +53,9 @@ sodium (mg).
 Food: when the user reports eating something, add an entry, with `time` set to
 the current time unless they give one, and `quantity`/`source` whenever they
 mention them. Frequently-eaten items live in the shared pantry (save_food, nutrients
-per one unit); log them by name at any quantity with add_entry_from_food, and
-prefer that over add_entry when a matching pantry item exists (see list_foods).
+per one unit; fix or change them with update_food); log them by name at any
+quantity with add_entry_from_food, and prefer that over add_entry when a matching
+pantry item exists (see list_foods).
 
 Weight: when the user reports a weight, log a weigh-in.
 
@@ -318,6 +320,54 @@ def save_food(
     data = _drop_none({"name": name, "unit": unit, "source": source})
     data["per"] = _nutrients(calories, protein, carbs, fat, fiber, sodium, sugar)
     return {"id": store().add_food(data), "status": "saved"}
+
+
+@mcp.tool()
+def update_food(
+    food: Annotated[str, Field(description="The pantry item to change: its id, or its current name (case-insensitive).")],
+    name: Optional[str] = None,
+    unit: Optional[str] = None,
+    source: Optional[str] = None,
+    calories: Optional[float] = None,
+    protein: Optional[float] = None,
+    carbs: Optional[float] = None,
+    fat: Optional[float] = None,
+    fiber: Optional[float] = None,
+    sodium: Optional[float] = None,
+    sugar: Optional[float] = None,
+    clear: Annotated[Optional[list[Literal[tuple(NUTRIENT_KEYS)]]], Field(description=(  # type: ignore[valid-type]
+        "Nutrients to remove from the item (e.g. a value that was wrong and is "
+        "unknown)."))] = None,
+) -> dict[str, Any]:
+    """Edit a saved pantry item. Only the fields you pass change; nutrient values
+    are PER ONE unit (as in save_food) and are merged into the item's existing
+    ones. To update several items, call this once per item. The pantry is shared
+    by every profile; entries already logged from the item keep their values."""
+    item = _find_food(food)
+    if item is None:
+        return {"status": "error", "detail": f"no pantry item matching {food!r}; see list_foods"}
+    data = _drop_none({"name": name, "unit": unit, "source": source})
+    if name is not None:
+        if not name.strip():
+            return {"status": "error", "detail": "name can't be empty"}
+        clash = next((f for f in store().list_foods()
+                      if f["id"] != item["id"] and (f.get("name") or "").lower() == name.strip().lower()), None)
+        if clash:
+            return {"status": "error", "detail": f"another pantry item is already called {clash['name']!r}"}
+        data["name"] = name.strip()
+    nutrients = _nutrients(calories, protein, carbs, fat, fiber, sodium, sugar)
+    if any(v < 0 for v in nutrients.values()):
+        return {"status": "error", "detail": "nutrient values can't be negative"}
+    if nutrients or clear:
+        per = {**(item.get("per") or {}), **nutrients}
+        for k in clear or []:
+            per.pop(k, None)
+        data["per"] = per
+    if not data:
+        return {"status": "error", "detail": "no fields provided to update"}
+    store().update_food(item["id"], data)
+    updated = {k: v for k, v in {**item, **data}.items() if k not in ("created_at", "updated_at")}
+    return {"id": item["id"], "status": "updated", "food": updated}
 
 
 @mcp.tool()
