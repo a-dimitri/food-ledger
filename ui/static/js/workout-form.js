@@ -2,7 +2,7 @@
 // new/edit exercise dialog.
 
 import { api, p, session, invalidate, loadDash, loadExercises, loadRoutines, loadWorkouts } from "./api.js";
-import { plural, EQUIPMENT, MUSCLE_GROUPS, bodyweightOn, cap, esc, fmtDate, fmtDay, isBodyweight, kg, previousSet, setLabel } from "./util.js";
+import { plural, DEFAULT_FORMULA, EQUIPMENT, FORMULAS, MUSCLE_GROUPS, bodyweightOn, cap, esc, fmtDate, fmtDay, isBodyweight, kg, previousSet, setLabel } from "./util.js";
 import { openSheet, closeSheet, formError, busy, showError, toast } from "./sheet.js";
 import { nav } from "./nav.js";
 
@@ -250,9 +250,12 @@ export function openExercisePicker(catalogue, onPick) {
 // ── new / edit exercise (shared catalogue) ───────────────────────────────────
 export function openExerciseForm(exercise = {}, onSaved = null) {
   const editing = !!exercise.id;
-  const sel = { muscle_group: exercise.muscle_group || "chest", equipment: exercise.equipment || "barbell" };
+  const sel = { muscle_group: exercise.muscle_group || "chest", equipment: exercise.equipment || "barbell",
+    e1rm_formula: exercise.e1rm_formula || DEFAULT_FORMULA };
+  const OPTIONS = { muscle_group: MUSCLE_GROUPS, equipment: EQUIPMENT, e1rm_formula: Object.keys(FORMULAS) };
   const chips = (field, options) => options.map((o) =>
-    `<button class="chip${sel[field] === o ? " active" : ""}" data-${field}="${o}">${cap(o)}</button>`).join("");
+    `<button class="chip${sel[field] === o ? " active" : ""}" data-${field}="${o}">${
+      field === "e1rm_formula" ? FORMULAS[o].label : cap(o)}</button>`).join("");
   const sheet = openSheet({
     title: editing ? "Edit exercise" : "New exercise",
     kind: "dialog",
@@ -263,6 +266,8 @@ export function openExerciseForm(exercise = {}, onSaved = null) {
         <span class="lbl">Share of bodyweight lifted</span>
         <input class="box" data-factor type="number" step="0.05" min="0.05" max="1" inputmode="decimal" value="${exercise.bodyweight_factor ?? 1}">
         <span class="mut">Used to estimate a weighted 1RM. 1.0 for pull-ups, chin-ups and dips; about 0.65 for push-ups, 0.5 for inverted rows.</span></div>
+      <div class="field"><span class="lbl">1RM formula</span><div class="seg" data-formula>${chips("e1rm_formula", OPTIONS.e1rm_formula)}</div>
+        <span class="mut">Both agree up to ~10 reps. Mayhew credits high-rep sets less than Epley. Changing it re-scores this exercise's whole history.</span></div>
       <div class="mut">The exercise catalogue is shared by every profile.</div>
       ${formError()}`,
     foot: `${editing ? '<button class="pill danger" data-delete>Delete</button><span class="spacer"></span>' : '<button class="pill" data-cancel>Cancel</button>'}
@@ -272,7 +277,7 @@ export function openExerciseForm(exercise = {}, onSaved = null) {
     sheet.querySelectorAll(`[data-${field}]`).forEach((b) => {
       b.onclick = () => {
         sel[field] = b.getAttribute(`data-${field}`);
-        sheet.querySelector(container).innerHTML = chips(field, field === "muscle_group" ? MUSCLE_GROUPS : EQUIPMENT);
+        sheet.querySelector(container).innerHTML = chips(field, OPTIONS[field]);
         sheet.querySelector("[data-factor-field]").hidden = sel.equipment !== "bodyweight";
         wire(field, container);
       };
@@ -280,6 +285,7 @@ export function openExerciseForm(exercise = {}, onSaved = null) {
   };
   wire("muscle_group", "[data-groups]");
   wire("equipment", "[data-equip]");
+  wire("e1rm_formula", "[data-formula]");
   sheet.querySelector("[data-cancel]")?.addEventListener("click", () => closeSheet());
 
   busy(sheet, sheet.querySelector("[data-save]"), async () => {

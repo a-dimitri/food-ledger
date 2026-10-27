@@ -99,17 +99,28 @@ export function phaseLabel(p, date) {
 export const RELIABLE_REPS = 12;
 export const isBodyweight = (ex) => ex?.bw_factor != null;
 
-export function epley(kgv, reps) {
+// 1RM formulas as the multiplier on the load lifted; chosen per exercise
+// (catalogue `e1rm_formula`). Mirrors core.workouts.FORMULAS.
+export const FORMULAS = {
+  epley: { label: "Epley", f: (r) => 1 + r / 30 },
+  mayhew: { label: "Mayhew", f: (r) => 100 / (52.2 + 41.9 * Math.exp(-0.055 * r)) },
+};
+export const DEFAULT_FORMULA = "epley";
+
+// A single counts as the 1RM itself, whatever the formula.
+export function estimate1rm(kgv, reps, formula) {
   if (kgv == null) return null;
-  return reps === 1 ? kgv : Math.round(kgv * (1 + reps / 30) * 10) / 10;
+  if (reps === 1) return kgv;
+  return Math.round(kgv * FORMULAS[formula || DEFAULT_FORMULA].f(reps) * 10) / 10;
 }
+export const epley = (kgv, reps) => estimate1rm(kgv, reps, "epley");
 
 // {e1rm, e1rm_total} for one top set; e1rm is added kg for bodyweight lifts.
-export function setEstimate(ex, bodyweight) {
-  if (!isBodyweight(ex)) { const e = epley(ex.kg ?? null, ex.reps); return { e1rm: e, e1rm_total: e }; }
+export function setEstimate(ex, bodyweight, formula) {
+  if (!isBodyweight(ex)) { const e = estimate1rm(ex.kg ?? null, ex.reps, formula); return { e1rm: e, e1rm_total: e }; }
   if (bodyweight == null) return { e1rm: null, e1rm_total: null };
   const lifted = ex.bw_factor * bodyweight;
-  const total = epley(lifted + (ex.kg || 0), ex.reps);
+  const total = estimate1rm(lifted + (ex.kg || 0), ex.reps, formula);
   return { e1rm: Math.round((total - lifted) * 10) / 10, e1rm_total: total };
 }
 
@@ -122,7 +133,7 @@ export function bodyweightOn(weights, date) {
 }
 
 // Every top set for one exercise across `workouts`, oldest first.
-export function exerciseHistory(workouts, exerciseId, weights = []) {
+export function exerciseHistory(workouts, exerciseId, weights = [], formula = null) {
   const rows = [];
   for (const w of workouts) {
     for (const ex of w.exercises || []) {
@@ -132,7 +143,7 @@ export function exerciseHistory(workouts, exerciseId, weights = []) {
       rows.push({
         date: w.date, workout: w, reps: ex.reps, bw_factor: ex.bw_factor ?? null, bodyweight,
         kg: bw ? (ex.kg ?? 0) : (ex.kg ?? null),
-        ...setEstimate(ex, bodyweight), approx: ex.reps > RELIABLE_REPS,
+        ...setEstimate(ex, bodyweight, formula), approx: ex.reps > RELIABLE_REPS,
       });
     }
   }

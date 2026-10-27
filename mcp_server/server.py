@@ -531,11 +531,15 @@ def add_exercise(
     bodyweight_factor: Annotated[Optional[float], Field(gt=0, le=1, description=(
         "Bodyweight exercises only: share of bodyweight lifted. 1.0 (default) for "
         "pull-ups, chin-ups and dips; about 0.65 for push-ups, 0.5 for inverted rows."))] = None,
+    e1rm_formula: Annotated[Optional[Literal[tuple(workout_rules.FORMULAS)]], Field(description=(
+        "1RM estimate formula: 'epley' (default) or 'mayhew', which credits "
+        "high-rep sets less."))] = None,
 ) -> dict[str, Any]:
     """Add an exercise to the shared catalogue. Check list_exercises first so the
     same exercise isn't added twice under a slightly different name."""
     return {"id": store().add_exercise({"name": name, "muscle_group": muscle_group, "equipment": equipment,
-                                        "bodyweight_factor": bodyweight_factor}), "status": "added"}
+                                        "bodyweight_factor": bodyweight_factor,
+                                        "e1rm_formula": e1rm_formula}), "status": "added"}
 
 
 def _find_exercise(ref: str, catalogue_: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -634,11 +638,13 @@ def get_exercise_history(exercise: str) -> dict[str, Any]:
     if ex is None:
         return {"status": "error", "detail": f"no exercise matching {exercise!r}; see list_exercises"}
     ps = _profile()
-    history = workout_rules.exercise_history(ps.workouts_with_exercise(ex["id"]), ex["id"], ps.list_weights())
+    history = workout_rules.exercise_history(ps.workouts_with_exercise(ex["id"]), ex["id"],
+                                             ps.list_weights(), ex.get("e1rm_formula"))
     active = phase_rules.phase_on(ps.list_phases(), sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
     return {
         "exercise": ex["name"],
+        "formula": ex.get("e1rm_formula") or workout_rules.DEFAULT_FORMULA,
         "history": history,
         "best": workout_rules.best_set(history),
         "change_vs_previous": workout_rules.kg_change(history),

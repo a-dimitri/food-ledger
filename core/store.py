@@ -7,7 +7,7 @@ Shared (top-level) collections — `Store`:
     profiles/<id>        {name, colour, height_cm, default_targets{}, emails[]}
     foods/<auto-id>      the shared pantry (see core.catalogue)
     exercises/<auto-id>  the shared exercise catalogue
-                         {name, muscle_group, equipment, bodyweight_factor?}
+                         {name, muscle_group, equipment, bodyweight_factor?, e1rm_formula}
 
 Per-profile subcollections under profiles/<id>/ — `ProfileStore`:
     entries/<auto-id>    one food entry (see core.compute for the field shape)
@@ -172,7 +172,12 @@ class Store:
     @staticmethod
     def _with_factor(exercise: dict[str, Any]) -> dict[str, Any]:
         """Bodyweight exercises carry `bodyweight_factor` (share of bodyweight
-        lifted; 1.0 unless given); other equipment never does."""
+        lifted; 1.0 unless given); other equipment never does. Every exercise
+        has an `e1rm_formula` (Epley unless given)."""
+        formula = exercise.get("e1rm_formula") or workout_rules.DEFAULT_FORMULA
+        if formula not in workout_rules.FORMULAS:
+            raise InvalidError(f"e1rm_formula must be one of {sorted(workout_rules.FORMULAS)}")
+        exercise = {**exercise, "e1rm_formula": formula}
         if exercise.get("equipment") == "bodyweight":
             f = exercise.get("bodyweight_factor")
             if f is None:
@@ -193,7 +198,8 @@ class Store:
         if not snap.exists:
             raise NotFoundError(f"exercise {exercise_id} not found")
         merged = self._with_factor({**(snap.to_dict() or {}), **data})
-        ref.update(_stamped({**data, "bodyweight_factor": merged["bodyweight_factor"]}, created=False))
+        ref.update(_stamped({**data, "bodyweight_factor": merged["bodyweight_factor"],
+                             "e1rm_formula": merged["e1rm_formula"]}, created=False))
 
     def delete_exercise(self, exercise_id: str) -> None:
         """Past workouts keep their snapshot of the name, so this is safe."""

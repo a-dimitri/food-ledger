@@ -3,7 +3,7 @@
 // set, estimated 1RM, sessions, change this phase.
 
 import { session, loadDash, loadExercises, loadHistory, loadWorkouts } from "../api.js";
-import { MUSCLE_GROUPS, cap, daysBetween, e1rmLabel, esc, exerciseHistory, fmtDay, phaseOn, setLabel, signed } from "../util.js";
+import { DEFAULT_FORMULA, FORMULAS, MUSCLE_GROUPS, cap, daysBetween, e1rmLabel, esc, exerciseHistory, fmtDay, phaseOn, setLabel, signed } from "../util.js";
 import { mount, rangeStart, timeChart } from "../charts.js";
 import { openExerciseForm } from "../workout-form.js";
 import { isMobile, nav } from "../nav.js";
@@ -52,15 +52,17 @@ async function renderDetail(el, ex, dash) {
   const today = session.today;
   const start = rangeStart(today, view.range);
   const shown = hist.filter((r) => r.date >= start);
-  // Bodyweight lifts chart the added-load 1RM by default, with the top set's
-  // added kg and the total (bodyweight included) as alternatives.
+  // Bodyweight lifts chart the added-load 1RM, or the total including bodyweight.
   const bw = ex.equipment === "bodyweight";
-  const metrics = bw ? [["e1rm", "Est. 1RM"], ["kg", "Added"], ["total", "Total"]] : [["kg", "Top set"], ["e1rm", "Est. 1RM"]];
+  const formula = ex.e1rm_formula || DEFAULT_FORMULA;
+  // Name the formula only when it isn't the default, to keep labels short.
+  const fLabel = formula === DEFAULT_FORMULA ? "" : ` · ${FORMULAS[formula].label}`;
+  const metrics = bw ? [["e1rm", "Est. 1RM"], ["total", "Total 1RM"]] : [["kg", "Top set"], ["e1rm", "Est. 1RM"]];
   const metric = metrics.some(([m]) => m === view.metric) ? view.metric : metrics[0][0];
   const value = (r) => (metric === "e1rm" ? r.e1rm : metric === "total" ? r.e1rm_total : r.kg);
 
   el.innerHTML = `<div class="detail-head"><div class="grow"><div class="h2">${esc(ex.name)}</div>
-      <div class="mut">${esc(cap(ex.equipment))} · ${esc(ex.muscle_group)}</div></div>
+      <div class="mut">${esc(cap(ex.equipment))} · ${esc(ex.muscle_group)}${esc(fLabel)}</div></div>
       <button class="ic" data-edit aria-label="Edit exercise">✎</button></div>
     <div class="seg">${["3m", "6m", "1y"].map((r) => `<button class="chip${view.range === r ? " active" : ""}" data-range="${r}">${r}</button>`).join("")}
       <span class="spacer"></span>

@@ -21,8 +21,9 @@ Pure functions over plain dicts — no Firestore dependency.
 
 from __future__ import annotations
 
+import math
 from datetime import date as Date, timedelta
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 Workout = dict[str, Any]
 
@@ -30,8 +31,18 @@ Workout = dict[str, Any]
 MUSCLE_GROUPS = ("chest", "back", "legs", "shoulders", "arms", "core")
 EQUIPMENT = ("barbell", "dumbbell", "cable", "machine", "bodyweight")
 
-# Epley is a rough fit beyond this many reps; estimates above it are flagged.
+# Estimates are a rough fit beyond this many reps; above it they're flagged.
 RELIABLE_REPS = 12
+
+# 1RM formulas, as the multiplier on the load lifted for `reps` reps. Chosen per
+# exercise in the catalogue (`e1rm_formula`, default Epley). Both agree within a
+# few percent up to ~10 reps; past that Epley keeps growing linearly while
+# Mayhew flattens, crediting high-rep sets less.
+FORMULAS: dict[str, Callable[[int], float]] = {
+    "epley": lambda r: 1 + r / 30,
+    "mayhew": lambda r: 100 / (52.2 + 41.9 * math.exp(-0.055 * r)),
+}
+DEFAULT_FORMULA = "epley"
 
 
 def is_bodyweight(ex: dict[str, Any]) -> bool:
@@ -72,16 +83,23 @@ def normalise(workout: Workout) -> Workout:
             "exercise_ids": list(dict.fromkeys(ex["exercise_id"] for ex in exercises))}
 
 
-def epley_1rm(kg: Optional[float], reps: int) -> Optional[float]:
-    """Estimated one-rep max (Epley) for `kg` lifted `reps` times."""
+def estimate_1rm(kg: Optional[float], reps: int, formula: Optional[str] = None) -> Optional[float]:
+    """Estimated one-rep max for `kg` lifted `reps` times. A single is taken as
+    the 1RM itself, whatever the formula."""
     if kg is None:
         return None
     if reps == 1:
         return float(kg)
-    return round(kg * (1 + reps / 30), 1)
+    return round(kg * FORMULAS[formula or DEFAULT_FORMULA](reps), 1)
 
 
-def set_estimate(ex: dict[str, Any], bodyweight: Optional[float]) -> dict[str, Optional[float]]:
+def epley_1rm(kg: Optional[float], reps: int) -> Optional[float]:
+    """Estimated one-rep max (Epley) for `kg` lifted `reps` times."""
+    return estimate_1rm(kg, reps, "epley")
+
+
+def set_estimate(ex: dict[str, Any], bodyweight: Optional[float],
+                 formula: Optional[str] = None) -> dict[str, Optional[float]]:
     """1RM estimates for one top set.
 
     e1rm        what the 1RM is quoted in: total kg for loaded lifts; for
@@ -92,12 +110,12 @@ def set_estimate(ex: dict[str, Any], bodyweight: Optional[float]) -> dict[str, O
     """
     reps, kg = ex["reps"], ex.get("kg")
     if not is_bodyweight(ex):
-        e = epley_1rm(kg, reps)
+        e = estimate_1rm(kg, reps, formula)
         return {"e1rm": e, "e1rm_total": e}
     if bodyweight is None:
         return {"e1rm": None, "e1rm_total": None}
     lifted = ex["bw_factor"] * bodyweight
-    total = epley_1rm(lifted + (kg or 0.0), reps)
+    total = estimate_1rm(lifted + (kg or 0.0), reps, formula)
     return {"e1rm": round(total - lifted, 1), "e1rm_total": total}
 
 
@@ -112,13 +130,16 @@ def bodyweight_on(weights: Iterable[dict[str, Any]], date: str) -> Optional[floa
 
 
 def exercise_history(workouts: Iterable[Workout], exercise_id: str,
-                     weights: Iterable[dict[str, Any]] = ()) -> list[dict[str, Any]]:
+                     weights: Iterable[dict[str, Any]] = (),
+                     formula: Optional[str] = None) -> list[dict[str, Any]]:
     """Every top set logged for one exercise, oldest first:
     [{date, workout_id, workout_name, kg, reps, bw_factor, bodyweight, e1rm,
       e1rm_total, approx}].
 
     For bodyweight exercises `kg` is the added load (0 for bodyweight only).
     A workout saved without a bodyweight falls back to the weigh-ins.
+    `formula` is the exercise's 1RM formula (computed on read, so changing it
+    re-scores the whole history).
     """
     weights = list(weights)
     rows = []
@@ -136,7 +157,7 @@ def exercise_history(workouts: Iterable[Workout], exercise_id: str,
                 "reps": ex["reps"],
                 "bw_factor": ex.get("bw_factor"),
                 "bodyweight": bodyweight,
-                **set_estimate(ex, bodyweight),
+                **set_estimate(ex, bodyweight, formula),
                 "approx": ex["reps"] > RELIABLE_REPS,
             })
     rows.sort(key=lambda r: r["date"])

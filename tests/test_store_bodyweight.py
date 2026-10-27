@@ -73,6 +73,12 @@ class TestCatalogueFactor(unittest.TestCase):
         with self.assertRaises(InvalidError):
             Store._with_factor({"equipment": "bodyweight", "bodyweight_factor": 1.5})
 
+    def test_formula_defaults_to_epley_and_is_validated(self):
+        self.assertEqual(Store._with_factor({"equipment": "barbell"})["e1rm_formula"], "epley")
+        self.assertEqual(Store._with_factor({"equipment": "barbell", "e1rm_formula": "mayhew"})["e1rm_formula"], "mayhew")
+        with self.assertRaises(InvalidError):
+            Store._with_factor({"equipment": "barbell", "e1rm_formula": "brzycki"})
+
 
 if __name__ == "__main__":
     unittest.main()

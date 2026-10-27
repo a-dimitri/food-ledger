@@ -276,6 +276,7 @@ class ExerciseIn(BaseModel):
     equipment: Literal[workout_rules.EQUIPMENT]  # type: ignore[valid-type]
     # Share of bodyweight lifted (bodyweight equipment only; 1.0 if omitted).
     bodyweight_factor: Optional[float] = Field(default=None, gt=0, le=1)
+    e1rm_formula: Optional[Literal[tuple(workout_rules.FORMULAS)]] = None  # type: ignore[valid-type]
 
 
 class ExercisePatch(BaseModel):
@@ -283,6 +284,7 @@ class ExercisePatch(BaseModel):
     muscle_group: Optional[Literal[workout_rules.MUSCLE_GROUPS]] = None  # type: ignore[valid-type]
     equipment: Optional[Literal[workout_rules.EQUIPMENT]] = None  # type: ignore[valid-type]
     bodyweight_factor: Optional[float] = Field(default=None, gt=0, le=1)
+    e1rm_formula: Optional[Literal[tuple(workout_rules.FORMULAS)]] = None  # type: ignore[valid-type]
 
 
 class TopSetIn(BaseModel):
@@ -674,8 +676,11 @@ def remove_workout(workout_id: str, ps: ProfileStore = Depends(profile_store)) -
 
 
 @app.get("/api/p/{profile_id}/exercises/{exercise_id}/history")
-def get_exercise_history(exercise_id: str, ps: ProfileStore = Depends(profile_store)) -> dict[str, Any]:
-    history = workout_rules.exercise_history(ps.workouts_with_exercise(exercise_id), exercise_id, ps.list_weights())
+def get_exercise_history(exercise_id: str, ps: ProfileStore = Depends(profile_store),
+                         store: Store = Depends(get_store)) -> dict[str, Any]:
+    formula = (store.get_exercise(exercise_id) or {}).get("e1rm_formula")
+    history = workout_rules.exercise_history(ps.workouts_with_exercise(exercise_id), exercise_id,
+                                             ps.list_weights(), formula)
     active = phase_rules.phase_on(ps.list_phases(), sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
     return {
@@ -688,11 +693,13 @@ def get_exercise_history(exercise_id: str, ps: ProfileStore = Depends(profile_st
 
 
 @app.get("/api/p/{profile_id}/lifts")
-def get_lifts(since: Optional[str] = None, ps: ProfileStore = Depends(profile_store)) -> dict[str, Any]:
+def get_lifts(since: Optional[str] = None, ps: ProfileStore = Depends(profile_store),
+              store: Store = Depends(get_store)) -> dict[str, Any]:
     """Insights › Lifts: workouts per week, and each exercise's latest top set
     with its change since the active phase began."""
     workouts = ps.list_workouts(since=since)
     weights = ps.list_weights()
+    formulas = {e["id"]: e.get("e1rm_formula") for e in store.list_exercises()}
     phases = ps.list_phases()
     active = phase_rules.phase_on(phases, sydney_today())
     phase_start = active["start"] if active and active["kind"] == "phase" else None
@@ -702,7 +709,7 @@ def get_lifts(since: Optional[str] = None, ps: ProfileStore = Depends(profile_st
             names.setdefault(ex["exercise_id"], ex.get("name"))
     lifts = []
     for exercise_id, name in names.items():
-        history = workout_rules.exercise_history(workouts, exercise_id, weights)
+        history = workout_rules.exercise_history(workouts, exercise_id, weights, formulas.get(exercise_id))
         latest = history[-1]
         lifts.append({
             "exercise_id": exercise_id, "name": name, "latest": latest,

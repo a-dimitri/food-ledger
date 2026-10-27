@@ -126,6 +126,28 @@ class TestBodyweight(unittest.TestCase):
         self.assertEqual(hist[0]["kg"], 0.0)                               # bodyweight only = +0
 
 
+class TestFormulas(unittest.TestCase):
+    def test_mayhew_values(self):
+        # 100 / (52.2 + 41.9·e^(−0.055·r)): ×1.263 at 8 reps, ×1.512 at 20.
+        self.assertEqual(workouts.estimate_1rm(100, 8, "mayhew"), 126.3)
+        self.assertEqual(workouts.estimate_1rm(100, 20, "mayhew"), 151.2)
+        self.assertEqual(workouts.estimate_1rm(100, 20, "epley"), 166.7)
+
+    def test_single_is_the_1rm_for_every_formula(self):
+        for f in workouts.FORMULAS:
+            self.assertEqual(workouts.estimate_1rm(100, 1, f), 100.0)
+
+    def test_default_is_epley(self):
+        self.assertEqual(workouts.estimate_1rm(85, 5), workouts.epley_1rm(85, 5))
+
+    def test_history_is_rescored_by_formula(self):
+        w = [{"date": "2026-10-20", "bodyweight_kg": 78,
+              "exercises": [{"exercise_id": PULL, "kg": None, "reps": 20, "bw_factor": 1.0}]}]
+        epley = workouts.exercise_history(w, PULL)[0]["e1rm"]
+        mayhew = workouts.exercise_history(w, PULL, formula="mayhew")[0]["e1rm"]
+        self.assertEqual((epley, mayhew), (52.0, 39.9))    # 78×1.667−78 vs 78×1.512−78
+
+
 class TestWeekly(unittest.TestCase):
     def test_counts_keyed_by_monday(self):
         counts = workouts.weekly_counts(LOG + [w("2026-10-25", (BENCH, 80, 8))])  # a Sunday
